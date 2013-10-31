@@ -4,7 +4,7 @@
 #include <windows.h>
 #include <WinSock2.h>
 
-#include "I8080.h"
+#include "..\\I8080\\I8080.h"
 #include "delay.h"
 #include "drawing.h"
 #include "ioports.h"
@@ -75,7 +75,7 @@ int main() {
 	fclose(boot);
 	
 	
-	cycles_per_loop = EXECUTION_INTERVAL * (cpu->frequency / 1000000.0);
+	cycles_per_loop = EXECUTION_INTERVAL * (2000000 / 1000000.0);
 	target_cycles   = cycles_per_loop;
 	
 	getMicroSeconds(&cycle_start); // get initial start time for loop entry
