@@ -1,0 +1,959 @@
+			;***********************************************************************
+			;
+			; REGISTERS ARE SAVED BY THE CALLER. THE CALLER ONLY NEEDS TO SAVE
+			; REGISTERS THAT IT SEES FIT.
+			;
+			; ALL REGISTERS MAY BE USED BY THE CALLEE
+			;
+			; ARGS ARE PASSED THROUGH REGISTERS AND ON TOP OF STACK
+			; (MOST 8-BIT VALUES ARE RETURNED THROUGH A AND 16-BIT VALUES IN HL)
+			;
+			; THE CALLEE IS RESPONSIBLE FOR STACK CLEAN UP
+			;
+			; RETURN VALUE PASSED THROUGH E FOR 8-BIT VALUES AND DE FOR 16-BIT VALUES
+			;
+			;***********************************************************************
+			
+			;***********************************************************************
+			;
+			; ADDRESS MACROS FOR BIOS
+			;
+			;***********************************************************************
+			
+            00 00	BIOS_BASE	  EQU 0000H
+            04 00	BIOS_SIZE	  EQU 0400H
+			
+            04 00	BIOS_VAR_BASE	  EQU BIOS_BASE + BIOS_SIZE
+            00 80	BIOS_VAR_SIZE	  EQU 0080H
+			
+            04 80	INPUT_BUFFER_BASE EQU BIOS_VAR_BASE + BIOS_VAR_SIZE
+            01 00	INPUT_BUFFER_SIZE EQU 0100H
+			
+            06 7F	SYS_STACK_BASE	  EQU INPUT_BUFFER_BASE+INPUT_BUFFER_SIZE+0FFH
+            00 80	SYS_STACK_SIZE	  EQU 0080H
+			
+            06 80	VIDEO_MEMORY_BASE EQU SYS_STACK_BASE+1
+            50 00	VIDEO_MEMORY_SIZE EQU 5000H
+			
+            56 80	OS_LOADER_BASE	  EQU VIDEO_MEMORY_BASE+VIDEO_MEMORY_SIZE
+            02 00	OS_LOADER_SIZE	  EQU 0200H
+			
+            58 80	BIOS_EXTENTION	  EQU OS_LOADER_BASE+OS_LOADER_SIZE
+			
+			;***********************************************************************
+			;
+			; PORT MACROS FOR I/O OPERATIONS
+			;
+			;***********************************************************************
+			
+            00 01	VIDEO_MODE_PORT EQU 01H
+            00 02	TEXT_OPER_PORT	EQU 02H
+            00 03	TEXT_OUT_PORT	EQU 03H
+			
+            00 04	KEY_INPUT_PORT	EQU 04H
+			
+            00 00	HDD_DATA_PORT	EQU 00H
+            00 05	HDD_STATUS_PORT EQU 05H
+            00 06	HDD_CMD_PORT	EQU 06H
+            00 07	HDD_HIADDR_PORT EQU 07H  ; 7-BIT CYLINDER AND UPPER BIT OF HEAD
+            00 08	HDD_LOADDR_PORT EQU 08H  ; LOWER 3-BITS OF HEAD AND 5-BIT SECTOR
+            00 0A	BANK_PORT	EQU 0AH
+			
+			;***********************************************************************
+			;
+			; HARD DRIVE STATUS MACROS
+			;
+			;***********************************************************************
+			
+            00 00	HDD_IDLE	EQU 000H    ; HARD DRIVE IS IDLING
+            00 FF	HDD_CMD_ERROR	EQU 0FFH    ; INVALID ADDRESS
+            00 01	HDD_NEED_DATA	EQU 001H    ; WAITING FOR BYTE
+            00 FE	HDD_WRITE_ERROR EQU 0FEH    ; WRITING ERROR
+            00 02	HDD_HAVE_DATA	EQU 002H    ; WAITING FOR CPU TO READ BYTE
+            00 FD	HDD_READ_ERROR	EQU 0FDH    ; READING ERROR
+            00 03	HDD_WRITE_DONE	EQU 003H    ; WRITE IS DONE
+            00 04	HDD_READ_DONE	EQU 004H    ; READ IS DONE
+			
+			;***********************************************************************
+			;
+			; HARD DRIVE COMMANDS
+			;
+			;***********************************************************************
+			
+            00 00	HDD_ENTER_IDLE	EQU 000H    ; FORCES IDLE
+            00 01	HDD_START_WRITE EQU 001H    ; STARTS WRITING SECTOR TO ADDRESS
+            00 FE	HDD_END_WRITE	EQU 0FEH    ; TERMINATES WRITE
+            00 02	HDD_START_READ	EQU 002H    ; STARTS READING SECTOR
+            00 FD	HDD_END_READ	EQU 0FDH    ; TERMINATES READ
+            00 03	HDD_READ_BYTE	EQU 003H    ; SIGNALS HARD DISK TO READ THE NEXT BYTE
+            00 04	HDD_SEND_BYTE	EQU 004H    ; SIGNALS HARD DISK TO SEND THE NEXT BYTE
+			
+			;***********************************************************************
+			;
+			; KEYBOARD MACROS
+			;
+			;***********************************************************************
+			
+            00 00	TRIGGER_RETURN	EQU 00H
+            00 01	TRIGGER_KEYDOWN EQU 01H
+			
+            00 00	POLLING_MODE	EQU 00H
+            00 01	INTERRUPT_MODE	EQU 01H
+			
+			;***********************************************************************
+			;
+			; VIDEO MACROS
+			;
+			;***********************************************************************
+			
+            00 00	DELETE_CHAR	EQU 00H
+            00 01	APPEND_CHAR	EQU 01H
+            00 02	NEW_LINE	EQU 02H
+            00 03	RESET_SCREEN	EQU 03H
+			
+            00 00	HI_RES_MODE	EQU 00H
+            00 01	LO_RES_MODE	EQU 01H
+            00 02	TEXT_MODE	EQU 02H
+			
+			;***********************************************************************
+			;
+			; NOP FILLS BETWEEN INTERRUPT VECTORS
+			; IT'S TOO MUCH WORK TO TRY TO WORK AROUND THEM
+			; AND MAKES UGLY CODE
+			;
+			;***********************************************************************
+			
+			INT_FILL_HALF	MACRO
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					ENDM
+			
+			
+			INT_FILL	MACRO
+					INT_FILL_HALF
+					INT_FILL_HALF
+					NOP
+					ENDM
+			
+			
+			;***********************************************************************
+			;
+			; INTERRUPT VECTOR JUMP TABLE
+			;
+			; BY DEFAULT: 00 - BIOS_START
+			;             08 - ZERO_INPUT_BUFFER
+			;             10 - KEYBOARD_INTERRUPT
+			;             18 -
+			;             20 -
+			;             28 -
+			;             30 -
+			;             38 -
+			;
+			;***********************************************************************
+			
+            00 00		ORG BIOS_BASE
+			
+   160 0000 C3 BE 01		JMP ENTRY
+			
+				INT_FILL
+			;/------------- INT_FILL start
+					INT_FILL_HALF
+			;/------------- INT_FILL_HALF start
+     2 0003 00				NOP
+     3 0004 00				NOP
+     4 0005 00				NOP
+     5 0006 00				NOP
+     6 0007 00				NOP
+     7 0008 00				NOP
+			;\------------- INT_FILL_HALF end
+					INT_FILL_HALF
+			;/------------- INT_FILL_HALF start
+    11 0009 00				NOP
+    12 000A 00				NOP
+    13 000B 00				NOP
+    14 000C 00				NOP
+    15 000D 00				NOP
+    16 000E 00				NOP
+			;\------------- INT_FILL_HALF end
+     4 000F 00				NOP
+			;\------------- INT_FILL end
+			
+   164 0010 C3 8C 00		JMP KEYBOARD_INT
+			
+				INT_FILL
+			;/------------- INT_FILL start
+					INT_FILL_HALF
+			;/------------- INT_FILL_HALF start
+    20 0013 00				NOP
+    21 0014 00				NOP
+    22 0015 00				NOP
+    23 0016 00				NOP
+    24 0017 00				NOP
+    25 0018 00				NOP
+			;\------------- INT_FILL_HALF end
+					INT_FILL_HALF
+			;/------------- INT_FILL_HALF start
+    29 0019 00				NOP
+    30 001A 00				NOP
+    31 001B 00				NOP
+    32 001C 00				NOP
+    33 001D 00				NOP
+    34 001E 00				NOP
+			;\------------- INT_FILL_HALF end
+    10 001F 00				NOP
+			;\------------- INT_FILL end
+			
+   168 0020 C3 7C 00		JMP ZERO_INPUT_BUFFER
+			
+				INT_FILL
+			;/------------- INT_FILL start
+					INT_FILL_HALF
+			;/------------- INT_FILL_HALF start
+    38 0023 00				NOP
+    39 0024 00				NOP
+    40 0025 00				NOP
+    41 0026 00				NOP
+    42 0027 00				NOP
+    43 0028 00				NOP
+			;\------------- INT_FILL_HALF end
+					INT_FILL_HALF
+			;/------------- INT_FILL_HALF start
+    47 0029 00				NOP
+    48 002A 00				NOP
+    49 002B 00				NOP
+    50 002C 00				NOP
+    51 002D 00				NOP
+    52 002E 00				NOP
+			;\------------- INT_FILL_HALF end
+    16 002F 00				NOP
+			;\------------- INT_FILL end
+			
+   172 0030 C3 73 00		JMP NULL_INTERRUPT
+			
+				INT_FILL
+			;/------------- INT_FILL start
+					INT_FILL_HALF
+			;/------------- INT_FILL_HALF start
+    56 0033 00				NOP
+    57 0034 00				NOP
+    58 0035 00				NOP
+    59 0036 00				NOP
+    60 0037 00				NOP
+    61 0038 00				NOP
+			;\------------- INT_FILL_HALF end
+					INT_FILL_HALF
+			;/------------- INT_FILL_HALF start
+    65 0039 00				NOP
+    66 003A 00				NOP
+    67 003B 00				NOP
+    68 003C 00				NOP
+    69 003D 00				NOP
+    70 003E 00				NOP
+			;\------------- INT_FILL_HALF end
+    22 003F 00				NOP
+			;\------------- INT_FILL end
+			
+   176 0040 C3 73 00		JMP NULL_INTERRUPT
+			
+				INT_FILL
+			;/------------- INT_FILL start
+					INT_FILL_HALF
+			;/------------- INT_FILL_HALF start
+    74 0043 00				NOP
+    75 0044 00				NOP
+    76 0045 00				NOP
+    77 0046 00				NOP
+    78 0047 00				NOP
+    79 0048 00				NOP
+			;\------------- INT_FILL_HALF end
+					INT_FILL_HALF
+			;/------------- INT_FILL_HALF start
+    83 0049 00				NOP
+    84 004A 00				NOP
+    85 004B 00				NOP
+    86 004C 00				NOP
+    87 004D 00				NOP
+    88 004E 00				NOP
+			;\------------- INT_FILL_HALF end
+    28 004F 00				NOP
+			;\------------- INT_FILL end
+			
+   180 0050 C3 73 00		JMP NULL_INTERRUPT
+			
+				INT_FILL
+			;/------------- INT_FILL start
+					INT_FILL_HALF
+			;/------------- INT_FILL_HALF start
+    92 0053 00				NOP
+    93 0054 00				NOP
+    94 0055 00				NOP
+    95 0056 00				NOP
+    96 0057 00				NOP
+    97 0058 00				NOP
+			;\------------- INT_FILL_HALF end
+					INT_FILL_HALF
+			;/------------- INT_FILL_HALF start
+   101 0059 00				NOP
+   102 005A 00				NOP
+   103 005B 00				NOP
+   104 005C 00				NOP
+   105 005D 00				NOP
+   106 005E 00				NOP
+			;\------------- INT_FILL_HALF end
+    34 005F 00				NOP
+			;\------------- INT_FILL end
+			
+   184 0060 C3 73 00		JMP NULL_INTERRUPT
+			
+				INT_FILL
+			;/------------- INT_FILL start
+					INT_FILL_HALF
+			;/------------- INT_FILL_HALF start
+   110 0063 00				NOP
+   111 0064 00				NOP
+   112 0065 00				NOP
+   113 0066 00				NOP
+   114 0067 00				NOP
+   115 0068 00				NOP
+			;\------------- INT_FILL_HALF end
+					INT_FILL_HALF
+			;/------------- INT_FILL_HALF start
+   119 0069 00				NOP
+   120 006A 00				NOP
+   121 006B 00				NOP
+   122 006C 00				NOP
+   123 006D 00				NOP
+   124 006E 00				NOP
+			;\------------- INT_FILL_HALF end
+    40 006F 00				NOP
+			;\------------- INT_FILL end
+			
+   188 0070 C3 73 00		JMP NULL_INTERRUPT
+			
+			
+			NULL_INTERRUPT:
+   192 0073 C9			RET
+			
+			
+			;***********************************************************************
+			;
+			; FUNCTION:  SET_INPUT_MODE
+			; PARAMS:    MODE CODE IN A
+			; RETURNS:   MODE SENT
+			; NOTES:     CHANGES THE INPUT MODE TO EITHER INTERRUPT OR POLLING
+			; PROC TIME: 5702 CYCLES
+			;
+			;***********************************************************************
+			
+			SET_INPUT_MODE:
+   206 0074 E6 01		ANI  01H
+   207 0076 32 01 04		STA  INPUT_MODE
+			
+			;***********************************************************************
+			;
+			; FUNCTION:  SWITCH_BANK
+			; PARAMS:    BANK NUMBER IN A
+			; RETURNS:   NONE
+			; NOTES:     SWITCHES THE MEMORY BANK. BE PREPARED.
+			; PROC TIME: 20 CYCLES
+			;
+			;***********************************************************************
+			
+			SWITCH_BANK:
+   220 0079 D3 0A		OUT BANK_PORT
+   221 007B C9			RET
+			
+			;***********************************************************************
+			;
+			; FUNCTION:  ZERO_INPUT_BUFFER
+			; PARAMS:    NONE
+			; RETURNS:   NONE
+			; NOTES:     ZEROS THE BUFFER AND COUNTERS
+			; PROC TIME: 5682 CYCLES
+			;
+			;***********************************************************************
+			
+			ZERO_INPUT_BUFFER:
+   234 007C AF			XRA  A
+   235 007D 32 02 04		STA  BUFFER_INDEX
+   236 0080 32 03 04		STA  PROCESSED_INDEX
+   237 0083 21 80 04		LXI  H,INPUT_BUFFER
+			LOOP_ZERO_BUFFER:
+   239 0086 77			MOV  M,A
+   240 0087 2C			INR  L
+   241 0088 C2 86 00		JNZ  LOOP_ZERO_BUFFER
+   242 008B C9			RET
+			
+			;***********************************************************************
+			;
+			; FUNCTION:  KEYBOARD_INT
+			; PARAMS:    NONE
+			; RETURNS:   KEY PRESSED
+			; NOTES:     TRIGGERED WHENEVER A KEY IS PRESSED
+			;            IF IN INTERRUPT MODE, ADDS KEY TO THE BUFFER
+			;            IF IN POLLING MODE, THE STATE OF THE KEY IS TOGGLED
+			; PROC TIME: 158-216 CYCLES
+			;
+			;***********************************************************************
+			
+			KEYBOARD_INT:
+   257 008C F5			PUSH PSW	     ; ENTER INTERRUPT
+   258 008D C5			PUSH B
+   259 008E D5			PUSH D
+   260 008F E5			PUSH H
+   261 0090 21 80 04		LXI  H,INPUT_BUFFER  ; LOAD H WITH BUFFER ADDRESS
+   262 0093 3A 01 04		LDA  INPUT_MODE      ; TEST IF WE'RE IN INTERRUPT MODE
+   263 0096 B7			ORA  A
+   264 0097 CA AE 00		JZ   TOGGLE_STATE    ; IF WE'RE NOT, THEN GO TO POLLING MODE
+   265 009A DB 04		IN   KEY_INPUT_PORT  ; IF WE ARE, GET KEY PRESSED
+   266 009C FE 80		CPI  10000000B	     ; IF KEY PRESSED > 127 THAN IT'S SIGNALING BEING RELEASED
+   267 009E F2 B6 00		JP   EXIT_INTERRUPT  ; WE DON'T RECORD RELEASES IN INTERRUPT MODE SO EXIT
+   268 00A1 47			MOV  B,A	     ; IF RECORDING, SAVE CHAR IN B
+   269 00A2 3A 02 04		LDA  BUFFER_INDEX    ; LOAD A WITH INDEX
+   270 00A5 6F			MOV  L,A	     ; BECAUSE THE BUFFER IS AT 0300H, WE JUST MOVE A INTO L
+   271 00A6 3C			INR  A		     ; INCREMENT TO NEXT MEMORY LOCATION
+   272 00A7 32 02 04		STA  BUFFER_INDEX    ; STORE MEMORY LOCATION FOR NEXT CALL
+   273 00AA 70			MOV  M,B	     ; STORE CHAR
+   274 00AB C3 B6 00		JMP  EXIT_INTERRUPT
+			
+			TOGGLE_STATE:
+   277 00AE DB 04		IN   KEY_INPUT_PORT  ; GET KEY PRESSED
+   278 00B0 E6 7F		ANI  01111111B	     ; IGNORE STATE, AS TOGGLING HANDLES THIS
+   279 00B2 6F			MOV  L,A
+   280 00B3 7E			MOV  A,M
+   281 00B4 2F			CMA		     ; TOGGLE KEY STATE
+   282 00B5 77			MOV  M,A
+			
+			;***********************************************************************
+			;
+			; FUNCTION:  EXIT_INTERRUPT
+			; PARAMS:    NONE
+			; RETURNS:   NONE
+			; NOTES:     RESTORES THE STATE OF ALL REGISTERS FROM ENTER_INTERRUPT
+			; PROC TIME: 50 CYCLES
+			;
+			;***********************************************************************
+			EXIT_INTERRUPT:
+   294 00B6 E1			POP  H
+   295 00B7 D1			POP  D
+   296 00B8 C1			POP  B
+   297 00B9 F1			POP  PSW
+   298 00BA C9			RET
+			
+			;***********************************************************************
+			;
+			; FUNCTION:  GETKEY
+			; PARAMS:    IF IN POLLING MODE, THEN KEY IN A
+			;            IF IN INTERRUPT MODE, THEN NONE
+			; RETURNS:   IF IN POLLING MODE, STATE OF KEY IN A
+			;            OTHERWISE NEXT KEY IN BUFFER IN A OR -1 IF NO KEYS PRESSED
+			; NOTES:
+			; PROC TIME: 62/93 CYCLES
+			;
+			;***********************************************************************
+			
+			GETKEY:
+   313 00BB 21 80 04		LXI H,INPUT_BUFFER    ; LOAD HL WITH BUFFER ADDRESS
+   314 00BE 47			MOV B,A 	      ; STORE CHAR IN B INCASE WE'RE IN POLLING MODE
+   315 00BF 3A 01 04		LDA INPUT_MODE	      ; CHECK IF WE'RE IN INTERRUPT MODE
+   316 00C2 B7			ORA A
+   317 00C3 CA D8 00		JZ  GET_STATE	      ; IF NOT GO TO GET THE KEY STATE
+   318 00C6 3A 03 04		LDA PROCESSED_INDEX   ; LOAD CURRENT INDEX OF PROCESSED KEYS
+   319 00C9 6F			MOV L,A 	      ; STORE IN LOWER ADDRESS
+   320 00CA 3A 02 04		LDA BUFFER_INDEX      ; LOAD INDEX OF UNPROCESSED KEYS
+   321 00CD BD			CMP L
+   322 00CE 3E FF		MVI A,0FFH
+   323 00D0 C8			RZ		      ; IF WE'RE AT THE SAME INDEX, NO KEYS HAVE BEEN PRESSED
+   324 00D1 7D			MOV A,L
+   325 00D2 3C			INR A
+   326 00D3 32 03 04		STA PROCESSED_INDEX   ; STORE THE NEXT INDEX
+   327 00D6 7E			MOV A,M 	      ; LOAD A WITH KEY PRESSED
+   328 00D7 C9			RET		      ; GTFO
+			
+			GET_STATE:
+   331 00D8 68			MOV L,B 	      ; MOVE INDEX OF KEY TO LOWER ADDRESS
+   332 00D9 7E			MOV A,M 	      ; GET KEY STATE
+   333 00DA C9			RET
+			
+			;***********************************************************************
+			;
+			; FUNCTION:  BACKSPACE
+			; PARAMS:    NONE
+			; RETURNS:   -1 IF NOT IN TEXT MODE
+			; NOTES:     DELETES THE PREVIOUS CHARACTER
+			; PROC TIME: 28/59 CYCLES
+			;
+			;***********************************************************************
+			
+			BACKSPACE:
+   346 00DB DB 01		IN  VIDEO_MODE_PORT
+   347 00DD FE 02		CPI TEXT_MODE
+   348 00DF 3E FF		MVI A,0FFH
+   349 00E1 C0			RNZ
+   350 00E2 3E 00		MVI A,DELETE_CHAR
+   351 00E4 D3 02		OUT TEXT_OPER_PORT
+   352 00E6 D3 03		OUT TEXT_OUT_PORT
+   353 00E8 C9			RET
+			
+			;***********************************************************************
+			;
+			; FUNCTION:  NEWLINE
+			; PARAMS:    NONE
+			; RETURNS:   -1 IF NOT IN TEXT MODE
+			; NOTES:     GOES TO NEXT LINE IN DISPLAY
+			; PROC TIME: 28/59 CYCLES
+			;
+			;***********************************************************************
+			
+			NEWLINE:
+   366 00E9 DB 01		IN  VIDEO_MODE_PORT
+   367 00EB FE 02		CPI TEXT_MODE
+   368 00ED 3E FF		MVI A,0FFH
+   369 00EF C0			RNZ
+   370 00F0 3E 02		MVI A,NEW_LINE
+   371 00F2 D3 02		OUT TEXT_OPER_PORT
+   372 00F4 D3 03		OUT TEXT_OUT_PORT
+   373 00F6 C9			RET
+			
+			;***********************************************************************
+			;
+			; FUNCTION:  RESET_CURSOR
+			; PARAMS:    NONE
+			; RETURNS:   -1 IN A IF NOT IN TEXT MODE, ELSE NONE
+			; NOTES:     SETS CURSOR TO 0
+			; PROC TIME: 28/63 CYCLES
+			;
+			;***********************************************************************
+			
+			RESET_CURSOR:
+   386 00F7 DB 01		IN  VIDEO_MODE_PORT
+   387 00F9 FE 02		CPI TEXT_MODE
+   388 00FB 3E FF		MVI A,0FFH
+   389 00FD C0			RNZ
+   390 00FE 3E 03		MVI A,RESET_SCREEN
+   391 0100 D3 02		OUT TEXT_OPER_PORT
+   392 0102 AF			XRA A
+   393 0103 D3 03		OUT TEXT_OUT_PORT
+   394 0105 C9			RET
+			
+			;***********************************************************************
+			;
+			; FUNCTION:  DISPCHAR
+			; PARAMS:    CHAR TO DISPLAY IN A
+			; RETURNS:   CHAR DISPLAYED OR -1 IF NOT IN TEXT MODE
+			; NOTES:     DISPLAYS CHARACTER TO SCREEN AT CURSOR POSITION THEN
+			;            INCREMENTS CURSOR
+			; PROC TIME: 45-110 CYCLES
+			;
+			;***********************************************************************
+			
+			DISPCHAR:
+   408 0106 FE 08		CPI 08H
+   409 0108 CA DB 00		JZ  BACKSPACE
+   410 010B FE 0A		CPI 0AH
+   411 010D CA E9 00		JZ  NEWLINE
+   412 0110 47			MOV B,A
+   413 0111 DB 01		IN  VIDEO_MODE_PORT
+   414 0113 FE 02		CPI TEXT_MODE
+   415 0115 3E FF		MVI A,0FFH
+   416 0117 C0			RNZ
+   417 0118 3E 01		MVI A,APPEND_CHAR
+   418 011A D3 02		OUT TEXT_OPER_PORT
+   419 011C 78			MOV A,B
+   420 011D D3 03		OUT TEXT_OUT_PORT
+   421 011F C9			RET
+				
+			;***********************************************************************
+			;
+			; FUNCTION:  GETCHAR
+			; PARAMS:    NONE
+			; RETURNS:   CHARACTER CODE OF INPUT KEY
+			; NOTES:     WAITS FOR A KEY TO GET PRESSED AND DISPLAYS IT TO SCREEN
+			; PROC TIME:
+			;
+			;***********************************************************************        
+			
+			GETCHAR:
+   434 0120 CD BB 00		CALL GETKEY
+   435 0123 FE FF		CPI  0FFH
+   436 0125 CA 20 01		JZ   GETCHAR
+   437 0128 C3 06 01		JMP  DISPCHAR
+			
+			;***********************************************************************
+			;
+			; FUNCTION:  GETCH
+			; PARAMS:    NONE
+			; RETURNS:   CHARACTER CODE OF INPUT KEY
+			; NOTES:     RETURNS KEY PRESSED WITHOUT ECHO
+			; PROC TIME:
+			;
+			;***********************************************************************
+			
+			GETCH:
+   450 012B CD BB 00		CALL GETKEY
+   451 012E FE FF		CPI  0FFH
+   452 0130 CA 2B 01		JZ   GETCH
+   453 0133 C9			RET
+			
+			;***********************************************************************
+			;
+			; FUNCTION:  PRINT
+			; PARAMS:    BASE OF NULL-TERMINATED STRING IN HL
+			; RETURNS:   NONE
+			; NOTES:
+			; PROC TIME: 127*(STRLEN+1) + 69
+			;
+			;***********************************************************************
+			
+			PRINT:
+   466 0134 7E			MOV  A,M
+   467 0135 23			INX  H
+   468 0136 CD 06 01		CALL DISPCHAR
+   469 0139 B7			ORA  A
+   470 013A C2 34 01		JNZ  PRINT
+   471 013D C3 DB 00		JMP  BACKSPACE
+			
+			;***********************************************************************
+			;
+			; FUNCTION:  SET_VIDE0_MODE
+			; PARAMS:    MODE CODE IN A
+			; RETURNS:   MODE SENT IN A
+			; NOTES:     CHANGES THE DISPLAY MODE
+			; PROC TIME: 27 CYCLES
+			;
+			;***********************************************************************
+			
+			SET_VIDEO_MODE:
+   484 0140 E6 03		ANI 011B
+   485 0142 D3 01		OUT VIDEO_MODE_PORT
+   486 0144 C9			RET
+			
+			;***********************************************************************
+			;
+			; FUNCTION:  HARDWARE_TEST
+			; PARAMS:    NONE
+			; RETURNS:   0 IF SUCCESSFUL, OTHERWISE ERROR CODE IN A
+			; NOTES:     TESTS EVERYTHING EVER.
+			; PROC TIME:
+			;
+			;***********************************************************************
+			
+			HARDWARE_TEST:
+   499 0145 C9			RET
+			
+			;***********************************************************************
+			;
+			; FUNCTION:  READ_SECTOR
+			; PARAMS:    16-BIT CHS ADDRESS IN DE AND BUFFER ADDRESS IN HL
+			; RETURNS:   0 IN A, ONLY RETURNS IF SUCCESSFUL...
+			; NOTES:     THIS IS NOT THREAD SAFE AND WILL CONTINUALLY RESEND UNTIL SUCCESSFUL
+			; PROC TIME: BEST CASE: 30883 CYCLES
+			;
+			;***********************************************************************
+			
+			READ_SECTOR:
+   512 0146 E5			PUSH H		       ; SAVE POINTER BASE
+   513 0147 DB 05		IN  HDD_STATUS_PORT
+   514 0149 FE 00		CPI HDD_IDLE
+   515 014B CA 55 01		JZ  READ_SECTOR_INIT
+   516 014E 3E 00		MVI A,HDD_ENTER_IDLE
+   517 0150 D3 06		OUT HDD_CMD_PORT       ; SORRY FOR BEING FORCEFUL!
+   518 0152 C3 7E 01		JMP REATTEMPT_READ
+			READ_SECTOR_INIT:
+   520 0155 7A			MOV A,D
+   521 0156 D3 07		OUT HDD_HIADDR_PORT    ; SET UPPER ADDRESS
+   522 0158 7B			MOV A,E
+   523 0159 D3 08		OUT HDD_LOADDR_PORT    ; SET LOWER ADDRES
+   524 015B 3E 02		MVI A,HDD_START_READ
+   525 015D D3 06		OUT HDD_CMD_PORT       ; INITIALIZE A READ
+   526 015F 3E 04		MVI A,HDD_SEND_BYTE
+   527 0161 D3 06		OUT HDD_CMD_PORT       ; TELL THE DISK TO SEND DATA
+   528 0163 DB 05		IN  HDD_STATUS_PORT    ; MAKE SURE THE DISK IS WITH US
+   529 0165 FE FF		CPI HDD_CMD_ERROR
+   530 0167 CA 7E 01		JZ  REATTEMPT_READ     ; HAVE TO START ALL OVER
+   531 016A 06 FD		MVI B,HDD_READ_ERROR   ; LOAD B WITH C0DE TO SAVE COMPARE TIME
+   532 016C 0E 04		MVI C,HDD_READ_DONE    ; LOAD C WITH CODE TO SAVE COMPARE TIME
+			READ_SECTOR_LOOP:
+   534 016E DB 00		IN  HDD_DATA_PORT      ; RECEIVE BYTE OF DATA
+   535 0170 77			MOV M,A 	       ; STORE AND MOVE ON
+   536 0171 23			INX H
+   537 0172 DB 05		IN  HDD_STATUS_PORT    ; GET STATUS
+   538 0174 B8			CMP B		       ; USE B INSTEAD OF IMMIDIATE TO SAVE CYCLES
+   539 0175 CA 7E 01		JZ  REATTEMPT_READ
+   540 0178 B9			CMP C		       ; HOPEFULLY WE'RE DONE!
+   541 0179 C2 6E 01		JNZ READ_SECTOR_LOOP
+   542 017C E1			POP H
+   543 017D C9			RET
+			
+			REATTEMPT_READ:
+   546 017E E1			POP H
+   547 017F C3 46 01		JMP READ_SECTOR
+			
+			;***********************************************************************
+			;
+			; FUNCTION:  WRITE_SECTOR
+			; PARAMS:    16-BIT CHS ADDRESS IN DE AND BUFFER ADDRESS IN HL
+			; RETURNS:   0 IN A, ONLY RETURNS IF SUCCESSFUL...
+			; NOTES:     THIS IS NOT THREAD SAFE AND WILL CONTINUALLY RESEND UNTIL SUCCESSFUL
+			; PROC TIME: BEST CASE: 30883 CYCLES
+			;
+			;***********************************************************************
+			
+			WRITE_SECTOR:
+   560 0182 E5			PUSH H		       ; SAVE POINTER BASE
+   561 0183 DB 05		IN  HDD_STATUS_PORT
+   562 0185 FE 00		CPI HDD_IDLE
+   563 0187 CA 91 01		JZ  WRITE_SECTOR_INIT
+   564 018A 3E 00		MVI A,HDD_ENTER_IDLE
+   565 018C D3 06		OUT HDD_CMD_PORT       ; SORRY FOR BEING FORCEFUL!
+   566 018E C3 BA 01		JMP REATTEMPT_WRITE
+			WRITE_SECTOR_INIT:
+   568 0191 7A			MOV A,D
+   569 0192 D3 07		OUT HDD_HIADDR_PORT    ; SET UPPER ADDRESS
+   570 0194 7B			MOV A,E
+   571 0195 D3 08		OUT HDD_LOADDR_PORT    ; SET LOWER ADDRES
+   572 0197 3E 01		MVI A,HDD_START_WRITE
+   573 0199 D3 06		OUT HDD_CMD_PORT       ; INITIALIZE A READ
+   574 019B 3E 03		MVI A,HDD_READ_BYTE
+   575 019D D3 06		OUT HDD_CMD_PORT       ; TELL THE DISK WE'RE SENDING DATA
+   576 019F DB 05		IN  HDD_STATUS_PORT    ; MAKE SURE THE DISK IS WITH US
+   577 01A1 FE FF		CPI HDD_CMD_ERROR
+   578 01A3 CA BA 01		JZ  REATTEMPT_WRITE    ; HAVE TO START ALL OVER
+   579 01A6 06 FE		MVI B,HDD_WRITE_ERROR  ; LOAD B WITH C0DE TO SAVE COMPARE TIME
+   580 01A8 0E 03		MVI C,HDD_WRITE_DONE   ; LOAD C WITH CODE TO SAVE COMPARE TIME
+			WRITE_SECTOR_LOOP:
+   582 01AA 7E			MOV A,M 	       ; LOAD A WITH BYTE
+   583 01AB 23			INX H		       ; GO TO NEXT BYTE
+   584 01AC D3 00		OUT HDD_DATA_PORT      ; WRITE A BYTE OF DATA
+   585 01AE DB 05		IN  HDD_STATUS_PORT    ; GET STATUS
+   586 01B0 B8			CMP B		       ; USE B INSTEAD OF IMMIDIATE TO SAVE CYCLES
+   587 01B1 CA BA 01		JZ  REATTEMPT_WRITE
+   588 01B4 B9			CMP C		       ; HOPEFULLY WE'RE DONE!
+   589 01B5 C2 AA 01		JNZ WRITE_SECTOR_LOOP
+   590 01B8 E1			POP H
+   591 01B9 C9			RET
+			
+			REATTEMPT_WRITE:
+   594 01BA E1			POP H
+   595 01BB C3 46 01		JMP READ_SECTOR
+			
+			;***********************************************************************
+			;
+			; FUNCTION:  ENTRY
+			; PARAMS:    NONE
+			; RETURNS:   NONE
+			; NOTES:     ATTEMPTS TO LOAD OS. IF FAILS, A BASIC TERMINAL IS STARTED
+			; PROC TIME: BEST CASE: 30883 CYCLES
+			;
+			;***********************************************************************
+			
+			ENTRY:
+   608 01BE 31 7F 06		LXI  SP,SYS_STACK      ; LOAD STACK POINTER
+   609 01C1 FB			EI
+   610 01C2 3E 00		MVI  A,000H
+   611 01C4 32 74 08		STA  VIDEO_MEMORY_BASE+500
+   612 01C7 76			HLT
+   613 01C8 3E 02		MVI  A,TEXT_MODE       ; SET DISPLAY TO TEXT MODE
+   614 01CA CD 40 01		CALL SET_VIDEO_MODE
+   615 01CD 3E 01		MVI  A,INTERRUPT_MODE
+   616 01CF CD 74 00		CALL SET_INPUT_MODE    ; SET INPUT TO INTERRUPT MODE
+   617 01D2 FB			EI		       ; ENABLE INTERRUPTS FOR INPUT
+   618 01D3 CD 45 01		CALL HARDWARE_TEST     ; TEST HARDWARE
+			
+   620 01D6 21 20 02		LXI  H,INIT_DATA
+   621 01D9 CD 34 01		CALL PRINT
+   622 01DC CD 34 01		CALL PRINT	       ; DISPLAY STEP ONE, INITIALIZING REGISTERS
+   623 01DF 21 80 56		LXI  H,OS_LOADER_BASE
+   624 01E2 01 00 00		LXI  B,0000H
+   625 01E5 CD 46 01		CALL READ_SECTOR       ; LOAD 512 BYTE OS LOADER
+   626 01E8 21 69 02		LXI  H,PERIOD
+   627 01EB CD 34 01		CALL PRINT	       ; DISPLAY STEP TWO WAS SUCCESSFUL
+   628 01EE 21 80 56		LXI  H,OS_LOADER_BASE
+   629 01F1 11 FE 01		LXI  D,01FEH	       ; MOVE TO LAST TWO BYTES LOADED
+   630 01F4 19			DAD  D
+   631 01F5 7E			MOV  A,M
+   632 01F6 FE FF		CPI  0FFH	       ; THE LAST TWO BYTES SHOULD BE 0XFF, 0XAA
+   633 01F8 C2 16 02		JNZ  LOAD_ERROR        ; SO HERE WE TEST FOR THAT, AND IF THEY AREN'T
+   634 01FB E5			PUSH H		       ; WE GO TO OUR MINIMALIST COMMAND LINE
+   635 01FC 21 69 02		LXI  H,PERIOD
+   636 01FF CD 34 01		CALL PRINT
+   637 0202 E1			POP  H
+   638 0203 23			INX  H
+   639 0204 7E			MOV  A,M
+   640 0205 FE AA		CPI  0AAH
+   641 0207 C2 16 02		JNZ  LOAD_ERROR
+   642 020A 21 69 02		LXI  H,PERIOD
+   643 020D CD 34 01		CALL PRINT
+   644 0210 CD F7 00		CALL RESET_CURSOR
+   645 0213 C3 80 56		JMP  OS_LOADER_BASE
+			
+			LOAD_ERROR:
+   648 0216 21 6C 02		LXI  H,LOAD_ERROR_MSG
+   649 0219 CD 34 01		CALL PRINT
+   650 021C 76			HLT
+   651 021D C3 80 58		JMP  BIOS_EXTENTION
+			
+			INIT_DATA:
+   654 0220			DB  0AH, 0AH, '                          DANS PC',0
+            0A 0A 20 20 
+            20 20 20 20 
+            20 20 20 20 
+            20 20 20 20 
+            20 20 20 20 
+            20 20 20 20 
+            20 20 20 20 
+            44 41 4E 53 
+            20 50 43 00 
+            
+   655 0244			DB  0AH,      '                         LOADING OS',0
+            0A 20 20 20 
+            20 20 20 20 
+            20 20 20 20 
+            20 20 20 20 
+            20 20 20 20 
+            20 20 20 20 
+            20 20 4C 4F 
+            41 44 49 4E 
+            47 20 4F 53 
+            00 
+			PERIOD:
+   657 0269			DB  '. ',0
+            2E 20 00 
+			LOAD_ERROR_MSG:
+   659 026C			DB  0AH,      '                       ERROR LOADING OS',0
+            0A 20 20 20 
+            20 20 20 20 
+            20 20 20 20 
+            20 20 20 20 
+            20 20 20 20 
+            20 20 20 20 
+            45 52 52 4F 
+            52 20 4C 4F 
+            41 44 49 4E 
+            47 20 4F 53 
+            00 
+			
+            04 00		ORG BIOS_VAR_BASE
+			
+			TRIGGER_MODE:
+   664 0400			DS 1
+			INPUT_MODE:
+   666 0401			DS 1
+			BUFFER_INDEX:
+   668 0402			DS 1
+			PROCESSED_INDEX:
+   670 0403			DS 1
+			
+            04 80		ORG INPUT_BUFFER_BASE
+			INPUT_BUFFER:
+			
+            06 7F		ORG SYS_STACK_BASE
+			SYS_STACK:
+
+
+*******************************************************************************
+                                 Symbols table
+*******************************************************************************
+
+Names			Types	Values
+-----			-----	------
+BIOS_BASE		EQU	00000h
+BIOS_SIZE		EQU	00400h
+BIOS_VAR_BASE		EQU	00400h
+BIOS_VAR_SIZE		EQU	00080h
+INPUT_BUFFER_BASE	EQU	00480h
+INPUT_BUFFER_SIZE	EQU	00100h
+SYS_STACK_BASE		EQU	0067Fh
+SYS_STACK_SIZE		EQU	00080h
+VIDEO_MEMORY_BASE	EQU	00680h
+VIDEO_MEMORY_SIZE	EQU	05000h
+OS_LOADER_BASE		EQU	05680h
+OS_LOADER_SIZE		EQU	00200h
+BIOS_EXTENTION		EQU	05880h
+VIDEO_MODE_PORT		EQU	00001h
+TEXT_OPER_PORT		EQU	00002h
+TEXT_OUT_PORT		EQU	00003h
+KEY_INPUT_PORT		EQU	00004h
+HDD_DATA_PORT		EQU	00000h
+HDD_STATUS_PORT		EQU	00005h
+HDD_CMD_PORT		EQU	00006h
+HDD_HIADDR_PORT		EQU	00007h
+HDD_LOADDR_PORT		EQU	00008h
+BANK_PORT		EQU	0000Ah
+HDD_IDLE		EQU	00000h
+HDD_CMD_ERROR		EQU	000FFh
+HDD_NEED_DATA		EQU	00001h
+HDD_WRITE_ERROR		EQU	000FEh
+HDD_HAVE_DATA		EQU	00002h
+HDD_READ_ERROR		EQU	000FDh
+HDD_WRITE_DONE		EQU	00003h
+HDD_READ_DONE		EQU	00004h
+HDD_ENTER_IDLE		EQU	00000h
+HDD_START_WRITE		EQU	00001h
+HDD_END_WRITE		EQU	000FEh
+HDD_START_READ		EQU	00002h
+HDD_END_READ		EQU	000FDh
+HDD_READ_BYTE		EQU	00003h
+HDD_SEND_BYTE		EQU	00004h
+TRIGGER_RETURN		EQU	00000h
+TRIGGER_KEYDOWN		EQU	00001h
+POLLING_MODE		EQU	00000h
+INTERRUPT_MODE		EQU	00001h
+DELETE_CHAR		EQU	00000h
+APPEND_CHAR		EQU	00001h
+NEW_LINE		EQU	00002h
+RESET_SCREEN		EQU	00003h
+HI_RES_MODE		EQU	00000h
+LO_RES_MODE		EQU	00001h
+TEXT_MODE		EQU	00002h
+NULL_INTERRUPT		Label	00073h
+SET_INPUT_MODE		Label	00074h
+SWITCH_BANK		Label	00079h
+ZERO_INPUT_BUFFER	Label	0007Ch
+LOOP_ZERO_BUFFER	Label	00086h
+KEYBOARD_INT		Label	0008Ch
+TOGGLE_STATE		Label	000AEh
+EXIT_INTERRUPT		Label	000B6h
+GETKEY			Label	000BBh
+GET_STATE		Label	000D8h
+BACKSPACE		Label	000DBh
+NEWLINE			Label	000E9h
+RESET_CURSOR		Label	000F7h
+DISPCHAR		Label	00106h
+GETCHAR			Label	00120h
+GETCH			Label	0012Bh
+PRINT			Label	00134h
+SET_VIDEO_MODE		Label	00140h
+HARDWARE_TEST		Label	00145h
+READ_SECTOR		Label	00146h
+READ_SECTOR_INIT	Label	00155h
+READ_SECTOR_LOOP	Label	0016Eh
+REATTEMPT_READ		Label	0017Eh
+WRITE_SECTOR		Label	00182h
+WRITE_SECTOR_INIT	Label	00191h
+WRITE_SECTOR_LOOP	Label	001AAh
+REATTEMPT_WRITE		Label	001BAh
+ENTRY			Label	001BEh
+LOAD_ERROR		Label	00216h
+INIT_DATA		Label	00220h
+PERIOD			Label	00269h
+LOAD_ERROR_MSG		Label	0026Ch
+TRIGGER_MODE		Label	00400h
+INPUT_MODE		Label	00401h
+BUFFER_INDEX		Label	00402h
+PROCESSED_INDEX		Label	00403h
+INPUT_BUFFER		Label	00480h
+SYS_STACK		Label	0067Fh
+
+Statistics
+----------
+"Name"	= 0
+"EQU"	= 49
+"SET"	= 0
+Labels	= 38
+
+

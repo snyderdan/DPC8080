@@ -1,0 +1,33 @@
+
+1) CPU
+
+The DPC uses the Intel 8080 as it's central processing unit.
+
+2) MEMORY
+
+Because we are using the 8080 we can only address up to 64K at a time. To overcome this limitation 
+the DPC uses memory banking. That means that by accessing certain I/O ports, a large chunk of memory
+is swapped out for a different chunk to expand the amount of addressable memory. 
+
+The first 48K of memory may be selected between any of four banks of memory. The upper 16K are used
+in order to share memory between each bank, as well as provide a place for the OS to operate in each
+bank. This expands the total useable memory to 208K. The bank can be changed by writing to port 10 (0xA).
+
+FIRST MEMORY BANK:
+ 0x0000-0x03FF - BIOS
+ 0x0400-0x04FF - INPUT BUFFER
+ 0x0500-0x05FF - BIOS STACK
+ 0x0600-0X07FF - BIOS VARIABLES
+ 0x0800-0x57FF - VIDEO MEMORY
+ 0x5800-0x5A00 - OS LOADER
+ 0xC000-0xFFFF - SYSTEM SHARED MEMORY
+
+The other three memory banks are handled by the OS. 
+
+3) OS MEMORY HANDLING
+
+SHARED MEMORY LAYOUT:
+ 0xC000-0xC3FF - OS system calls
+ 0xC400-0xC5FF - System stack
+ 0xC600-0xC7FF - Copy subroutine, semaphores and semaphore subroutines
+ 0xC800-0xFFFF - Copy space
