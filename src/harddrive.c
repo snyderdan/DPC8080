@@ -10,15 +10,12 @@
 # define WRITE_ERROR 0xFE
 # define HAVE_DATA   0x02
 # define READ_ERROR  0xFD
-# define WRITE_DONE  0x03
-# define READ_DONE   0x04
+# define PROCESSING  0x03
 
 // Hard drive commands
 # define ENTER_IDLE  0
 # define START_WRITE 1
-# define END_WRITE   0xFE
 # define START_READ  2
-# define END_READ    0xFD
 # define READ_NEXT   3
 # define SEND_NEXT   4
 
@@ -49,3 +46,17 @@ void CHS2LBA() {
 	disk.lba *= RECORD_SIZE;
 }
 
+void port00_disk_cmd(I8080 *cpu) {
+	
+}
+
+void port01_disk_ack(I8080 *cpu) {
+	if (isOutput(cpu)) {
+		if (getAccumulator(cpu) == 1) {
+			if (disk.status == WRITE_ERROR || disk.status == READ_ERROR) {
+				disk.status = IDLE;
+			} else if (disk.status == NEED_DATA) {
+				disk.status = PROCESSING;
+			}
+		}
+}

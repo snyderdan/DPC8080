@@ -9,24 +9,12 @@
 #include "drawing.h"
 #include "ioports.h"
 
-//#define DEBUG_LOOP
-//#define DEBUG_REG_DUMP
-
 # define EXECUTION_INTERVAL 500 // microseconds
 
 int executeCycles(I8080 *cpu, int numberOfCycles) {
 	cpu->counter = 0;
 	while (numberOfCycles > cpu->counter) {
 		stepCPU(cpu);
-#ifdef DEBUG_REG_DUMP
-#define ubyte unsigned char
-#define ushort unsigned short
-        printf("A: 0x%02X PC: 0x%04X\nB: 0x%02X C:  0x%02X\nD: 0x%02X E:  0x%02X\nH: 0x%02X L:  0x%02X\nSP: 0x%02X\n\n", 
-        (ubyte)cpu->a, (ushort)cpu->pc, (ubyte)cpu->b, (ubyte)cpu->c, (ubyte)cpu->d, (ubyte)cpu->e, (ubyte)cpu->h, (ubyte)cpu->l, (ushort)cpu->sp);
-#undef ubyte
-#undef ushort
-		//getchar();
-#endif
 	}
 	
 	return cpu->counter;
@@ -39,9 +27,9 @@ int main() {
 	char  ch;
 	I8080 *cpu;
 	FILE  *boot;
-	int64_t previous_cycle_start, cycle_start, cycle_end;
-	int actual_time, target_time, running, lSize, result;
-	double target_cycles, actual_cycles, cycles_per_loop;
+	int64_t start_time, target_time, delta_time;
+	int running, lSize, result;
+	int target_cycles, actual_cycles, cycles_per_loop;
 	SDL_Event event;
 	
 	SetThreadAffinityMask(GetCurrentThread(), 1);
@@ -74,17 +62,10 @@ int main() {
 	
 	fclose(boot);
 	
-	
 	cycles_per_loop = EXECUTION_INTERVAL * (2000000 / 1000000.0);
 	target_cycles   = cycles_per_loop;
 	
-	getMicroSeconds(&cycle_start); // get initial start time for loop entry
-	// This is because the next time cycle_start is set is at the end of the loop
-	// to account for any time consumed with branches.
-	
-	cycle_end            = EXECUTION_INTERVAL + cycle_start;
-	previous_cycle_start = cycle_start;
-	target_time          = EXECUTION_INTERVAL;
+	getMicroSeconds(&target_time);	// set start time of run
 	
 	running = 1;
 	
@@ -150,45 +131,24 @@ int main() {
 		serviceDisplay();
 		
 		// Attempt to execute x number of cycles (which will most likely overshoot)
-		actual_cycles = (double) executeCycles(cpu, (int) target_cycles); 
-		
-#ifdef DEBUG_LOOP
-		printf("\nTarget cycles: %i Actual cycles: %i ", (int) target_cycles, (int) actual_cycles);
-#endif
+		actual_cycles = executeCycles(cpu, target_cycles); 
         // Calculate the target number of cycles to execute for next loop
         // Not all instructions are of uniform cycle count, so the last instruction may very well take more cycles than we had hoped to execute
-		target_cycles = cycles_per_loop + target_cycles - actual_cycles;   
+		target_cycles = cycles_per_loop + target_cycles - actual_cycles;
 		
-#ifdef DEBUG_LOOP
-		printf("Next target:   %i\n", (int) target_cycles);
-#endif
-        // Account for any error in the previous delay function
-        // Time calculations are done at the end of current loop for previous loop in order to better account for time
-        // taken in function calls and loops
-		actual_time = cycle_end - previous_cycle_start; 
+		// the following code sets up a syncronized delay window
+		// using absolute time as opposed to relative for each cycle.
+		// this greatly simplifies the code while eliminating the 
+		// issue of accumulating time that is unaccounted for
 		
-#ifdef DEBUG_LOOP
-		printf("Target time:   %i Actual time:   %i ", target_time, actual_time);
-#endif
-
-		// If our actual time was perfect, then the emulator will be set to execute every EXECUTION_INTERVAL number of microseconds
-		target_time = EXECUTION_INTERVAL + target_time - actual_time;
+		target_time = target_time + EXECUTION_INTERVAL;		// calculate the next absolute time we want to be at
 		
-#ifdef DEBUG_LOOP
-		printf("Next target:   %i\n", target_time);
-#endif
+		getMicroSeconds(&delta_time);						// get current absolute time
 		
-		// Get number of microseconds used for the calculations, and execution of emulator
-		getMicroSeconds(&cycle_end); 
-		// Delay to achieve the 'target' amount of time that should be consumed (cycle_end - cycle_start is calculation time)
-		delayMicroSeconds(target_time - (cycle_end - cycle_start)); 
+		delta_time = target_time - delta_time;				// calculate time difference
 		
-		// Record current start time for use at the start of next loop
-		previous_cycle_start = cycle_start;
-		// Recalculate cycle_end to account for any overshooting in the delay
-		getMicroSeconds(&cycle_end);
-		// Set this cycle start as the end of the last cycle
-		cycle_start = cycle_end;
+		delayMicroSeconds(delta_time);						// wait for specified time
+		
 	}
 	
 	SDL_Quit();
