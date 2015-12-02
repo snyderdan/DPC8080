@@ -1,8 +1,8 @@
-# define BANK_SIZE   0xC000
-# define SHARED_SIZE 0x10000-BANK_SIZE
+#include "memory.h"
+#include <windows.h>
 
 char *memBanks[4],*sharedMem;
-int  bankNumber = 0;
+int  bankNumber;
 
 void initMemory() {
 	memBanks[0] = malloc(BANK_SIZE);

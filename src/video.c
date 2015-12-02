@@ -1,38 +1,4 @@
-
-# define HIRES_SCALE_FACTOR  3
-# define LORES_SCALE_FACTOR  (HIRES_SCALE_FACTOR*2)
-
-# define SCREEN_WIDTH  360
-# define SCREEN_HEIGHT 224
-
-# define LORES_PITCH   (SCREEN_WIDTH/2)
-# define HIRES_PITCH   (SCREEN_WIDTH*2/8)
-
-# define CHAR_WIDTH    6
-# define CHAR_HEIGHT   8
-# define SCREEN_CHAR_W (SCREEN_WIDTH/CHAR_WIDTH)
-# define SCREEN_CHAR_H (SCREEN_HEIGHT/CHAR_HEIGHT)
-
-# define HIGH_RES      0
-# define LOW_RES       1
-# define TEXT_MODE     2
-
-# define DELETE_CHAR 0
-# define APPEND_CHAR 1
-# define NEW_LINE    2
-# define RESET       3
-
-typedef struct video_controller {
-	SDL_Surface *screen, *charMap[96];
-	Uint8       *pixelBuffer,
-				*charBuffer,
-				 textOperation,
-				 displayMode;
-	int cursorIndex,
-		dirtyBuffer;
-} Display;
-
-Display video;
+#include "video.h"
 
 void initDisplay() {
 	video.charBuffer  = malloc(1680);
@@ -114,10 +80,10 @@ void updateScreen() {
 	} else if (video.displayMode == TEXT_MODE) {
 		int i,j, o;
 		SDL_Rect dest;
-		dest.y = 1;
+		dest.y = 0;
 		for (i=0;i<SCREEN_CHAR_H;i++){
 			o = i*SCREEN_CHAR_W;
-			dest.x = 1;
+			dest.x = 0;
 			for (j=0;j<SCREEN_CHAR_W;j++) {
 				SDL_Surface *image = video.charMap[(int)video.charBuffer[o+j]];
 				SDL_BlitSurface(image, NULL, video.screen, &dest);

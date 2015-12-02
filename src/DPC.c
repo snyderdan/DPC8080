@@ -1,5 +1,4 @@
 #include <stdio.h>
-#include <SDL.h>
 #include <time.h>
 #include <windows.h>
 #include <WinSock2.h>
@@ -7,7 +6,9 @@
 #include "..\\I8080\\I8080.h"
 #include "delay.h"
 #include "drawing.h"
+#include "video.h"
 #include "ioports.h"
+#include "keyboard.h"
 
 # define EXECUTION_INTERVAL 500 // microseconds
 
@@ -34,7 +35,7 @@ int main() {
 	
 	SetThreadAffinityMask(GetCurrentThread(), 1);
 	
-	cpu  = newCPU();	
+	cpu  = newCPU();
 	keyboardbuffer = malloc(1024);
 	
 	initCPU(cpu);
@@ -42,15 +43,13 @@ int main() {
 	initHardDrive();
 	initMemory();
 	setMMU(cpu, myMMU);
-	setIOPort(cpu, 0, port00_disk_data);
 	setIOPort(cpu, 1, port01_display_mode);
 	setIOPort(cpu, 2, port02_operation);
 	setIOPort(cpu, 3, port03_charin);
 	setIOPort(cpu, 4, port04_keyout);
-	setIOPort(cpu, 5, port05_disk_status);
-	setIOPort(cpu, 6, port06_disk_cmd);
-	setIOPort(cpu, 7, port07_hdd_hiaddr);
-	setIOPort(cpu, 8, port08_hdd_loaddr);
+	setIOPort(cpu, 5, port05_diskrx);
+	setIOPort(cpu, 6, port06_disktx);
+	setIOPort(cpu, 0xA, port0A_switch_bank);
 	
 	boot   = fopen("bios/bios.bin", "rb");
 	fseek(boot , 0 , SEEK_END);

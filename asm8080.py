@@ -10,7 +10,8 @@ Instr = Instruction
 instructions = [Instruction("mov",0x40,Instr.DEST_SRC|Instr.REG_OP),
                 Instruction("mvi",0x06,Instr.DEST|Instr.REG_OP),
                 Instruction("lxi",0x01,Instr.DEST_IMM_16|Instr.SP_OP|Instr.PAIR),
-                Instruction("stax",
+                #Instruction("stax",
+                ]
 
 ERR_INVALID_OPERAND = 1
 ERR_MISSING_OPERAND = 2
@@ -36,7 +37,7 @@ def parse_int8(n):
         value = int(n[:-1], 16)
 
     elif n.endswith("b"):
-        value = int(n[:-1], 1)
+        value = int(n[:-1], 2)
 
     elif n.endswith("o"):
         value = int(n[:-1], 8)
@@ -188,4 +189,11 @@ class Instruction:
             value[0] |= self.get_dest(dest)
             value.extend(parse_int16(src))
         return value
-            
+    
+class Token:
+
+    UNDEF = 0   # undefined token
+    EXPR  = 1   # expression
+    LABEL = 2   # label
+    INSTR = 3   # instruction
+    ASMDR = 4   # assembler directive (org, equ)
