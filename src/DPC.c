@@ -43,7 +43,7 @@ int main() {
 	setIOPort(cpu, 6, port06_disktx);
 	setIOPort(cpu, 0xA, port0A_switch_bank);
 	
-	boot   = fopen("bios/bios.bin", "rb");
+	boot   = fopen("../bios/bios.bin", "rb");
 	fseek(boot , 0 , SEEK_END);
     lSize  = ftell(boot);
     rewind(boot);

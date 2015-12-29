@@ -15,7 +15,7 @@ void initDisplay() {
 	
 	for (i=0;i<95;i++) {
 		char buf[16];
-		sprintf(buf, "charmap/%d.bmp", i);
+		sprintf(buf, "../charmap/%d.bmp", i);
 		SDL_Surface *charimg = SDL_LoadBMP(buf);
 		SDL_Surface *formatted = SDL_DisplayFormat(charimg);
 		video.charMap[i] = LinearScale(formatted, HIRES_SCALE_FACTOR);
