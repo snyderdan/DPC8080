@@ -10,17 +10,8 @@
 #include "ioports.h"
 #include "keyboard.h"
 
-# define EXECUTION_INTERVAL 500 // microseconds
-# define CPU_FREQUENCY      1000  // kilohertz
-
-/*int executeCycles(I8080 *cpu, int numberOfCycles) {
-	cpu->counter = 0;
-	while (numberOfCycles > cpu->counter) {
-		stepCPU(cpu);
-	}
-	
-	return cpu->counter;
-}*/
+# define EXECUTION_INTERVAL 1000   // microseconds
+# define CPU_FREQUENCY      2000   // kilohertz
 
 #undef main
 
@@ -132,7 +123,6 @@ int main() {
 		
 		// Attempt to execute x number of cycles (which will most likely overshoot)
 		actual_cycles = executeCycles(cpu, target_cycles); 
-		printf("Target cycles: %d\n", target_cycles);
         // Calculate the target number of cycles to execute for next loop
         // Not all instructions are of uniform cycle count, so the last instruction may very well take more cycles than we had hoped to execute
 		target_cycles = cycles_per_loop + target_cycles - actual_cycles;
@@ -147,8 +137,6 @@ int main() {
 		getMicroSeconds(&delta_time);						// get current absolute time
 		
 		delta_time = target_time - delta_time;				// calculate time difference
-		
-		printf("delta time: %d\n", delta_time);
 		
 		delayMicroSeconds(delta_time);						// wait for specified time
 		
