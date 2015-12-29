@@ -3,7 +3,7 @@
 ; BASIC INPUT/OUTPUT SYSTEM FOR THE DPC BASED AROUND THE INTEL 8080
 ; MICRO-PROCESSOR. THIS PROVIDES THE VERY BASIC ROUTINES FOR
 ; INTERFACING WITH THE ENVIRONMENT. THIS INCLUDES KEYBOARD INPUT,
-; TEXT AND GRAPHICS DISPLAY, MEMORY PAGING, AND DISK I/O.
+; TEXT AND GRAPHICS DISPLAY, MEMORY BANKING, AND DISK I/O.
 ; THERE IS NO SECONDARY PROCESSOR TO HANDLE I/O, AS I AM SHOOTING FOR
 ; SIMPLICITY NOT PERFORMANCE.
 ;
@@ -24,7 +24,32 @@
 ;***********************************************************************
 
 	include "HDD.INC"
-	include "BIOS_MAP.INC"
+
+;***********************************************************************
+;
+; ADDRESS MACROS FOR BIOS
+;
+;***********************************************************************
+
+BIOS_BASE	  EQU 0000H
+BIOS_SIZE	  EQU 0400H
+
+BIOS_VAR_BASE	  EQU BIOS_BASE + BIOS_SIZE
+BIOS_VAR_SIZE	  EQU 0080H
+
+INPUT_BUFFER_BASE EQU BIOS_VAR_BASE + BIOS_VAR_SIZE
+INPUT_BUFFER_SIZE EQU 0100H
+
+SYS_STACK_SIZE	  EQU 00100H
+SYS_STACK_BASE	  EQU INPUT_BUFFER_BASE+INPUT_BUFFER_SIZE+SYS_STACK_SIZE
+
+VIDEO_MEMORY_BASE EQU SYS_STACK_BASE+1
+VIDEO_MEMORY_SIZE EQU 5000H
+
+OS_LOADER_BASE	  EQU VIDEO_MEMORY_BASE+VIDEO_MEMORY_SIZE
+OS_LOADER_SIZE	  EQU 0200H
+
+BIOS_EXTENTION	  EQU OS_LOADER_BASE+OS_LOADER_SIZE
 
 ;***********************************************************************
 ;
@@ -92,10 +117,8 @@ INTERRUPT_MODE	EQU 01H
 
 DELETE_CHAR	EQU 00H
 APPEND_CHAR	EQU 01H
-CARIDGE_RETURN	EQU 02H
-LINE_FEED	EQU 03H
-RESET_SCREEN	EQU 03H
 NEW_LINE	EQU 02H
+RESET_SCREEN	EQU 03H
 
 HI_RES_MODE	EQU 00H
 LO_RES_MODE	EQU 01H
@@ -131,8 +154,8 @@ INT_FILL	MACRO
 ; INTERRUPT VECTOR JUMP TABLE
 ;
 ; BY DEFAULT: 00 - BIOS_START
-;	      08 - ZERO_INPUT_BUFFER
-;	      10 - KEYBOARD_INTERRUPT
+;	      08 - KEYBOARD_INTERRUPT
+;	      10 -
 ;	      18 -
 ;	      20 -
 ;	      28 -
@@ -151,11 +174,11 @@ INT_FILL	MACRO
 
 	INT_FILL
 
-	JMP ZERO_INPUT_BUFFER
+	JMP NULL_INTERRUPT
 
 	INT_FILL
 
-	JMP SWITCH_BANK
+	JMP NULL_INTERRUPT
 
 	INT_FILL
 
@@ -190,6 +213,21 @@ NULL_INTERRUPT:
 
 SWITCH_BANK:
 	OUT BANK_PORT
+	RET
+
+;***********************************************************************
+;
+; FUNCTION:  SET_VIDE0_MODE
+; PARAMS:    MODE CODE IN A
+; RETURNS:   MODE SENT IN A
+; NOTES:     CHANGES THE DISPLAY MODE
+; PROC TIME: 27 CYCLES
+;
+;***********************************************************************
+
+SET_VIDEO_MODE:
+	ANI 011B
+	OUT VIDEO_MODE_PORT
 	RET
 
 ;***********************************************************************
@@ -406,6 +444,24 @@ DISPCHAR:
 	MOV A,B
 	OUT TEXT_OUT_PORT
 	RET
+
+;***********************************************************************
+;
+; FUNCTION:  PRINT
+; PARAMS:    BASE OF NULL-TERMINATED STRING IN HL
+; RETURNS:   0 IN A IF SUCCESSFUL
+; NOTES:
+; PROC TIME: 127*(STRLEN+1) + 69
+;
+;***********************************************************************
+
+PRINT:
+	MOV  A,M
+	INX  H
+	CALL DISPCHAR
+	ORA  A
+	JNZ  PRINT
+	JMP  BACKSPACE
 	
 ;***********************************************************************
 ;
@@ -441,57 +497,13 @@ GETCH:
 
 ;***********************************************************************
 ;
-; FUNCTION:  PRINT
-; PARAMS:    BASE OF NULL-TERMINATED STRING IN HL
-; RETURNS:   0 IN A IF SUCCESSFUL
-; NOTES:
-; PROC TIME: 127*(STRLEN+1) + 69
-;
-;***********************************************************************
-
-PRINT:
-	MOV  A,M
-	INX  H
-	CALL DISPCHAR
-	ORA  A
-	JNZ  PRINT
-	JMP  BACKSPACE
-
-;***********************************************************************
-;
-; FUNCTION:  SET_VIDE0_MODE
-; PARAMS:    MODE CODE IN A
-; RETURNS:   MODE SENT IN A
-; NOTES:     CHANGES THE DISPLAY MODE
-; PROC TIME: 27 CYCLES
-;
-;***********************************************************************
-
-SET_VIDEO_MODE:
-	ANI 011B
-	OUT VIDEO_MODE_PORT
-	RET
-
-;***********************************************************************
-;
-; FUNCTION:  HARDWARE_TEST
-; PARAMS:    NONE
-; RETURNS:   0 IF SUCCESSFUL, OTHERWISE ERROR CODE IN A
-; NOTES:     TESTS EVERYTHING EVER.
-; PROC TIME:
-;
-;***********************************************************************
-
-HARDWARE_TEST:
-	RET
-
-;***********************************************************************
-;
 ; FUNCTION:  READ_SECTOR
 ; PARAMS:    16-BIT CHS ADDRESS IN DE AND BUFFER ADDRESS IN HL
 ; RETURNS:   0 IN A IF SUCCESSFUL, ERROR CODE OTHERWISE
 ; NOTES:     ADDRESS IS IN CHS: 	D	  |	   E
 ;				 C C C C C C C H  |  H H S S S S S S
+;	     THIS IS THE CORE READ OPERATION, WHICH SHOULD ONLY
+;	     BE PERFORMED UNDER THE DISGRESSION OF THE OS.
 ; PROC TIME: BEST CASE: 30883 CYCLES
 ;
 ;***********************************************************************
@@ -538,7 +550,7 @@ READ_SEC10:
 	DCR  E		    ; DECREMENT E
 	JNZ  READ_SEC10     ; RELOOP IF != 0
 	DCR  D		    ; DECREMENT D AS WELL
-	JP   READ_SEC10     ; RELOOP IF >= 0
+	JNZ  READ_SEC10     ; RELOOP IF != 0
 	IN   HDD_RX_PORT    ; READ WHAT SHOULD BE AN END_FRAME
 	CPI  END_FRAME	    ; ? - WHAT WE EXPECT
 	JNZ  READ_ERR	    ; N - RETURN
@@ -564,6 +576,8 @@ READ_ERR:
 ; RETURNS:   0 IN A IF SUCCESSFUL, ERROR CODE OTHERWISE
 ; NOTES:     ADDRESS IS IN CHS: 	D	  |	   E
 ;				 C C C C C C C H  |  H H S S S S S S
+;	     THIS IS THE CORE WRITE OPERATION, WHICH SHOULD ONLY
+;	     BE PERFORMED UNDER THE DISGRESSION OF THE OS.
 ; PROC TIME: BEST CASE: 30883 CYCLES
 ;
 ;***********************************************************************
@@ -605,7 +619,7 @@ WRITE_SEC10:
 	DCR  E		    ; DECREMENT E
 	JNZ  WRITE_SEC10    ; RELOOP IF != 0
 	DCR  D		    ; DECREMENT D AS WELL
-	JP   WRITE_SEC10    ; RELOOP IF >= 0
+	JNZ  WRITE_SEC10    ; RELOOP IF != 0
 	MVI  A,END_FRAME    ; SEND ENDFRAME
 	OUT  HDD_TX_PORT    ; WRITE TO DISK
 	IN   HDD_RX_PORT    ; READ WHAT SHOULD BE A WRITE_OKAY
@@ -631,20 +645,27 @@ WRITE_ERR:
 ;
 ;***********************************************************************
 
+;***********************************************************************
+;
+; FUNCTION:  HARDWARE_TEST
+; PARAMS:    NONE
+; RETURNS:   0 IF SUCCESSFUL, OTHERWISE ERROR CODE IN A
+; NOTES:     TESTS EVERYTHING EVER.
+; PROC TIME:
+;
+;***********************************************************************
+
 ENTRY:
 	LXI  SP,SYS_STACK      ; LOAD STACK POINTER
-	EI
 	MVI  A,000H
 	STA  VIDEO_MEMORY_BASE+500
-	HLT
 	MVI  A,TEXT_MODE       ; SET DISPLAY TO TEXT MODE
 	CALL SET_VIDEO_MODE
 	MVI  A,INTERRUPT_MODE
 	CALL SET_INPUT_MODE    ; SET INPUT TO INTERRUPT MODE
 	EI		       ; ENABLE INTERRUPTS FOR INPUT
-	CALL HARDWARE_TEST     ; TEST HARDWARE
-
 	LXI  H,INIT_DATA
+	CALL PRINT
 	CALL PRINT
 	CALL PRINT	       ; DISPLAY STEP ONE, INITIALIZING REGISTERS
 	LXI  H,OS_LOADER_BASE
