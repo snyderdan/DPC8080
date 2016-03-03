@@ -1,4 +1,4 @@
-
+ 
 1) CPU
 
 The DPC uses the Intel 8080 as it's central processing unit.
@@ -9,25 +9,29 @@ Because we are using the 8080 we can only address up to 64K at a time. To overco
 the DPC uses memory banking. That means that by accessing certain I/O ports, a large chunk of memory
 is swapped out for a different chunk to expand the amount of addressable memory. 
 
-The first 48K of memory may be selected between any of four banks of memory. The upper 16K are used
-in order to share memory between each bank, as well as provide a place for the OS to operate in each
-bank. This expands the total useable memory to 208K. The bank can be changed by writing to port 10 (0xA).
+The first 32K of memory is fixed and contains the BIOS and operating system as well as the call stack
+and copy space to share memory between banks. The DPC requires 32K in DIM-0 and at least 1K in DIM-1
+in order to run. DIM-1 through DIM-7 compose the remaining 32K of addressable memory not used by the 
+OS/BIOS and may be switched between by writing to port 10 (0xA). 
+
+This expands the total useable memory to 256K-32K reserved which leaves 224K of user RAM.
+
+The first DIM that is determined to be empty OR contains less than 32K of RAM will be the point where
+the BIOS stops searching for more RAM until a more sophisticated MMU is implemented. This means two
+DIM slots cannot contain 16K of RAM. Only the last DIM slot can contain any value other than 32K.
 
 FIRST MEMORY BANK:
- 0x0000-0x03FF - BIOS
- 0x0400-0x04FF - INPUT BUFFER
- 0x0500-0x05FF - BIOS STACK
- 0x0600-0X07FF - BIOS VARIABLES
+ 0x0000-0x07FF - BIOS
  0x0800-0x57FF - VIDEO MEMORY
- 0x5800-0x5A00 - OS LOADER
- 0xC000-0xFFFF - SYSTEM SHARED MEMORY
+ 0x5800-0x59FF - OS LOADER
+ 0x5A00-0x79FF - OS
+ 0x7A00-0x7FFF - SYSTEM STACK
 
-The other three memory banks are handled by the OS. 
+3) DISPLAY
 
-3) OS MEMORY HANDLING
-
-SHARED MEMORY LAYOUT:
- 0xC000-0xC3FF - OS system calls
- 0xC400-0xC5FF - System stack
- 0xC600-0xC7FF - Copy subroutine, semaphores and semaphore subroutines
- 0xC800-0xFFFF - Copy space
+The DPC uses a 360x224 pixel display. This display has 3 modes: Text mode, high resolution mode, and
+low resolution mode. Text mode shows a display of 60 characters wide and 28 characters high of a 64
+character set. High resolution mode is the 360x224 display, displaying 4 colors per pixel. Low res
+mode displays 180x112 pixels but allows for up to 256 colors to be displayed. Text mode is operated
+through the use of various IO ports (mainly handled by the BIOS) while pixel manipulation is done 
+directly through memory. 

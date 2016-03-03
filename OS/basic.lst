@@ -1,0 +1,453 @@
+     1 			;***********************************************************************
+     2 			;
+     3 			; REGISTERS ARE SAVED BY THE CALLER. THE CALLER ONLY NEEDS TO SAVE
+     4 			; REGISTERS THAT IT SEES FIT.
+     5 			;
+     6 			; ALL REGISTERS MAY BE USED BY THE CALLEE
+     7 			;
+     8 			; ARGS ARE PASSED THROUGH REGISTERS AND ON TOP OF STACK
+     9 			; (MOST 8-BIT VALUES ARE RETURNED THROUGH A AND 16-BIT VALUES IN HL)
+    10 			;
+    11 			; THE CALLEE IS RESPONSIBLE FOR STACK CLEAN UP
+    12 			;
+    13 			;***********************************************************************
+    14
+    15     				INCLUDE "BIOS_MAP.INC"
+     1      00 73		NULL_INTERRUPT		EQU   00073h
+     2      00 74		SWITCH_BANK		EQU   00074h
+     3      00 77		SET_VIDEO_MODE		EQU   00077h
+     4      00 7C		SET_INPUT_MODE		EQU   0007Ch
+     5      00 81		ZERO_INPUT_BUFFER	EQU   00081h
+     6      00 91		KEYBOARD_INT		EQU   00091h
+     7      00 C0		GETKEY			EQU   000C0h
+     8      00 FC		RESET_CURSOR		EQU   000FCh
+     9      01 0B		DISPCHAR		EQU   0010Bh
+    10      01 25		PRINT			EQU   00125h
+    11      01 31		GETCHAR 		EQU   00131h
+    12      01 3C		GETCH			EQU   0013Ch
+    13      01 45		READ_SECTOR		EQU   00145h
+    14      01 B3		WRITE_SECTOR		EQU   001B3h
+    15
+    16      56 81		OS_LOADER_BASE		EQU	05681h
+    17      02 00		OS_LOADER_SIZE		EQU	00200h
+    16
+    17      58 81		BASIC_BASE	EQU OS_LOADER_BASE+OS_LOADER_SIZE
+    18      10 00		BASIC_SIZE	EQU 1000H
+    19
+    20      56 81			ORG  OS_LOADER_BASE
+    21 			LOADENTR:
+    22 5681 21 94 56		LXI  H,MSG
+    23 5684 CD 25 01		CALL PRINT
+    24 5687 FB			EI
+    25 5688 76			HLT
+    26 5689 21 81 58		LXI  H,BASIC_BASE
+    27 568C 11 01 00		LXI  D,0001H
+    28 568F 01 00 02		LXI  B,0200H
+    29     			INCLUDE "UTIL/PROC_CNTL.ASM"
+     1
+     2 			PCB_P:
+     3      00 00			ORG	0
+     4
+     5 			PCBLOCK:	; process control block
+     6
+     7 0000		PCB_STATE	DB	0	; one byte state
+            00 
+     8      00 01		PCB_WAIT	EQU	1	; process waiting
+     9      00 02		PCB_ACTIVE	EQU	2	; process running
+    10      00 03		PCB_IO		EQU	3	; process IO bound
+    11      00 04		PCB_TERM	EQU	4	; process is terminated
+    12 0001		PCB_HANDLE	DB	0,0	; which IO handle we are waiting on
+            00 00 
+    13 0003		PCB_ID		DB	0	; ID (256 processes)
+            00 
+    14 0004		PCB_PSW 	DB	0,0	; PSW of process
+            00 00 
+    15 			; process registers
+    16 0006		PCB_AF		DB	0,0
+            00 00 
+    17 0008		PCB_BC		DB	0,0
+            00 00 
+    18 000A		PCB_DE		DB	0,0
+            00 00 
+    19 000C		PCB_HL		DB	0,0
+            00 00 
+    20      56 92				ORG	PCB_P
+    30 5692 0E 08			MVI  C,8
+    31
+    32 			MSG:
+    33 5694			DB   'HELLO WORLD!',0
+            48 45 4C 4C 
+            4F 20 57 4F 
+            52 4C 44 21 
+            00 
+    34 			LOADLP:
+    35 56A1 C5			PUSH B
+    36 56A2 CD 45 01		CALL READ_SECTOR
+    37 56A5 C1			POP  B
+    38 56A6 09			DAD  B
+    39 56A7 13			INX  D
+    40 56A8 0D			DCR  C
+    41 56A9 C2 A1 56		JNZ  LOADLP
+    42 56AC C3 81 58		JMP  BASIC_BASE
+    43
+    44 56AF			DS   0FFH, 0AAH
+    45      58 81			ORG  BASIC_BASE
+    46
+    47
+    48
+    49 			;***********************************************************************
+    50 			;
+    51 			; FUNCTION:  BCDADD
+    52 			; PARAMS:    ADDRESS OF BCD IN HL
+    53 			; RETURNS:   SUM OF BCDACC AND BCD AT HL IN BCDACC
+    54 			; NOTES:     ADDS TWO 32-BIT BCDS
+    55 			; PROC TIME: 677-1048 CYCLES
+    56 			;
+    57 			;***********************************************************************
+    58
+    59 			BCDADD:
+    60 5881 0E 04			MVI C,4
+    61 5883 11 70 59		LXI D,BCDACC
+    62 5886 37			STC
+    63 5887 3F			CMC		; EFFECTIVELY SET CARRY TO ZERO
+    64 			ADDLOOP:
+    65 5888 1A			LDAX D		; LOAD BYTE OF ACCUMULATOR
+    66 5889 8E			ADC  M		; ADD BYTE AT HL
+    67 588A 27			DAA		; DECIMAL ADJUST FOR BCD
+    68 588B 12			STAX D		; STORE BACK IN ACCUMULATOR
+    69 588C 13			INX  D		;
+    70 588D 23			INX  H		;
+    71 588E 0D			DCR  C
+    72 588F C2 88 58		JNZ  ADDLOOP	; LOOP FOR FOUR BYTES
+    73 5892 C9			RET
+    74
+    75
+    76 			;***********************************************************************
+    77 			;
+    78 			; FUNCTION:  BCDNEG
+    79 			; PARAMS:    ADDRESS OF BCD IN HL
+    80 			; RETURNS:   10'S COMPLEMENT OF BCD IN H
+    81 			; NOTES:     NEGATES 4 BYTE BCD
+    82 			; PROC TIME: 677-1048 CYCLES
+    83 			;
+    84 			;***********************************************************************
+    85
+    86 			BCDNEG:
+    87 5893 0E 04			MVI C,4
+    88 5895 06 99			MVI B,99H
+    89 			NEGLOOP:
+    90 5897 78			MOV A,B
+    91 5898 96			SUB M
+    92 5899 77			MOV M,A
+    93 589A 23			INX H
+    94 589B 0D			DCR C
+    95 589C C2 97 58		JNZ NEGLOOP
+    96 589F 2B			DCX H
+    97 58A0 2B			DCX H
+    98 58A1 2B			DCX H
+    99 58A2 2B			DCX H
+   100 58A3 C9			RET
+   101
+   102
+   103 			;***********************************************************************
+   104 			;
+   105 			; FUNCTION:  BCDSUB
+   106 			; PARAMS:    ADDRESS OF BCD IN HL
+   107 			; RETURNS:   DIFFERENCE OF BCDACC AND BCD AT HL IN BCDACC
+   108 			; NOTES:     SUBTRACTS TWO 32-BIT BCDS
+   109 			; PROC TIME: 677-1048 CYCLES
+   110 			;
+   111 			;***********************************************************************
+   112
+   113 			BCDSUB:
+   114 58A4 CD 93 58		CALL BCDNEG
+   115 58A7 CD 81 58		CALL BCDADD
+   116 58AA 21 70 59		LXI  H,BCDACC
+   117 58AD CD 93 58		CALL BCDNEG
+   118 58B0 0E 04			MVI  C,4
+   119 58B2 37			STC
+   120 58B3 3F			CMC
+   121 58B4 3E 01			MVI  A,1
+   122 58B6 06 00			MVI  B,0
+   123 			SUBLOOP:
+   124 58B8 8E			ADC  M
+   125 58B9 27			DAA
+   126 58BA 77			MOV  M,A
+   127 58BB 78			MOV  A,B
+   128 58BC 0D			DCR  C
+   129 58BD C2 B8 58		JNZ  SUBLOOP
+   130 58C0 C9			RET
+   131
+   132
+   133 			;***********************************************************************
+   134 			;
+   135 			; FUNCTION:  STR2BCD
+   136 			; PARAMS:    ADDRESS OF STRING IN HL
+   137 			; RETURNS:   ADDRESS OF BCD IN HL
+   138 			; NOTES:     CONVERTS STRING TO A 32-BIT BCD (MAX VALUE OF 99,999,999)
+   139 			; PROC TIME: 677-1048 CYCLES
+   140 			;
+   141 			;***********************************************************************
+   142
+   143 			BCD2STR:
+   144
+   145
+   146 			;***********************************************************************
+   147 			;
+   148 			; FUNCTION:  STR2BCD
+   149 			; PARAMS:    ADDRESS OF STRING IN HL
+   150 			; RETURNS:   ADDRESS OF BCD IN HL
+   151 			; NOTES:     CONVERTS STRING TO A 32-BIT BCD (MAX VALUE OF 99,999,999)
+   152 			; PROC TIME: 677-1048 CYCLES
+   153 			;
+   154 			;***********************************************************************
+   155
+   156 			STR2BCD:
+   157 58C1 11 6C 59		LXI D,BCDUNPK+8 ; LOAD D WITH END OF UNPACKED AREA
+   158 58C4 EB			XCHG
+   159 58C5 0E 08			MVI C,8 	; NIBBLE COUNT
+   160 58C7 06 30			MVI B,'0'
+   161 58C9 1A			LDAX D		; TEST FOR NEGATIVE SIGN
+   162 58CA FE 2D			CPI  '-'
+   163 58CC C2 D5 58		JNZ  CONVERT
+   164 58CF 3E 01			MVI  A,1	; IF THERE IS, SAVE A FLAG TO NEGATE NUMBER
+   165 58D1 32 93 58		STA  BCDNEG
+   166 58D4 13			INX  D		; MOVE TO NEXT CHAR IN THE STRING
+   167 			CONVERT:
+   168 58D5 1A			LDAX D		; LOAD A WITH NEXT CHAR
+   169 58D6 B7			ORA  A		; IF ZERO
+   170 58D7 CA EA 58		JZ   FINCONV	; FINISH ZEROING WORK AREA AND PACK
+   171 58DA 90			SUB  B		; GET TRUE VALUE
+   172 58DB FA 11 59		JM   CONVERR	; IF LESS THAN 0, ERROR
+   173 58DE FE 0A			CPI  0AH	; IF GREATER THAN OR EQUAL TO 10
+   174 58E0 FA 11 59		JM   CONVERR	; ERROR
+   175 58E3 77			MOV  M,A	; STORE A IN UNPACKED AREA
+   176 58E4 13			INX  D		; INC STRING INDEX
+   177 58E5 23			INX  H		; INC UNPACKED INDEX
+   178 58E6 0D			DCR  C		; DEC COUNTER TO ENSURE
+   179 58E7 C2 D5 58		JNZ  CONVERT	; WE DON'T OVERFLOW
+   180 			FINCONV:
+   181 58EA 79			MOV  A,C	; LOAD A WITH REMAINING COUNT
+   182 58EB 3C			INR  A
+   183 			ZEROLOOP:
+   184 58EC 3D			DCR  A		; CHECK IF COUNT IS ZERO
+   185 58ED CA F6 58		JZ   STRTPACK	; IF SO, WE CAN START PACKING
+   186 58F0 36 00			MVI  M,0	; SET LEADING ZERO
+   187 58F2 23			INX  H
+   188 58F3 C3 EC 58		JMP  ZEROLOOP
+   189 			STRTPACK:
+   190 58F6 0E 04			MVI  C,4	; LOOP COUNTER
+   191 58F8 21 64 59		LXI  H,BCDUNPK	; HL = UNPACKED AREA
+   192 58FB 11 6C 59		LXI  D,BCDPACK	; DE = PACKED AREA
+   193 			PACKFN:
+   194 58FE 46			MOV  B,M	; STORE FIRST BCD DIGIT IN B
+   195 58FF 23			INX  H
+   196 5900 7E			MOV  A,M	; STORE SECOND BCD DIGIT IN A
+   197 5901 23			INX  H		; GO TO NEXT TWO BCD DIGITS
+   198 5902 07			RLC		; SHIFT LOWER FOUR BITS UPWARDS
+   199 5903 07			RLC		; SHIFT
+   200 5904 07			RLC		; SHIFT
+   201 5905 07			RLC		; SHIFT
+   202 5906 A0			ANA  B		; MERGE TWO BITS
+   203 5907 12			STAX D		; STORE IN PACKED AREA
+   204 5908 13			INX  D		; GO TO NEXT PACKED INDEX
+   205 5909 0D			DCR  C		; DECREMENT COUNTER
+   206 590A C2 FE 58		JNZ  PACKFN
+   207 590D 21 6C 59		LXI  H,BCDPACK
+   208 5910 C9			RET
+   209 			CONVERR:
+   210 5911 C9			RET
+   211
+   212 			STMTJMPTB:
+   213 5912			DS 0
+   214 			IFSTR:
+   215 5912			DB 'IF',0
+            49 46 00 
+   216 			;	 DB IFSTMT
+   217 			THENSTR:
+   218 5915			DB 'THEN',0
+            54 48 45 4E 
+            00 
+   219 			;	 DB THENSTMT
+   220 			ELSESTR:
+   221 591A			DB 'ELSE',0
+            45 4C 53 45 
+            00 
+   222 			;	 DB ELSESTMT
+   223 			ENDSTR:
+   224 591F			DB 'END',0
+            45 4E 44 00 
+            
+   225 			;	 DB ENDSTMT
+   226 			GOTOSTR:
+   227 5923			DB 'GOTO',0
+            47 4F 54 4F 
+            00 
+   228 			;	 DB GOTOSTMT
+   229 			GOSUBSTR:
+   230 5928			DB 'GOSUB',0
+            47 4F 53 55 
+            42 00 
+   231 			;	 DB GOSUBSTMT
+   232 			RETSTR:
+   233 592E			DB 'RET',0
+            52 45 54 00 
+            
+   234 			;	 DB RETSTMT
+   235 			LABLESTR:
+   236 5932			DB 'LET',0
+            4C 45 54 00 
+            
+   237 			;	 DB LABELSTMT
+   238 			RUNSTR:
+   239 5936			DB 'RUN',0
+            52 55 4E 00 
+            
+   240 			;	 DB RUNSTMT
+   241 			PAUSESTR:
+   242 593A			DB 'PAUSE',0
+            50 41 55 53 
+            45 00 
+   243 			;	 DB PAUSESTMT
+   244 			PRINTSTR:
+   245 5940			DB 'PRINT',0
+            50 52 49 4E 
+            54 00 
+   246 			;	 DB PRINTSTMT
+   247 			READSTR:
+   248 5946			DB 'READ',0
+            52 45 41 44 
+            00 
+   249 			;	 DB READSTMT
+   250 			WRITESTR:
+   251 594B			DB 'WRITE',0
+            57 52 49 54 
+            45 00 
+   252 			;	 DB WRITESTMT
+   253
+   254 			FNCTJMPTB:
+   255 5951			DS 0
+   256 			RNDSTR:
+   257 5951			DB 'RND',0
+            52 4E 44 00 
+            
+   258 			;	 DB RNDFUNCT
+   259 			INPUTSTR:
+   260 5955			DB 'INPUT',0
+            49 4E 50 55 
+            54 00 
+   261 			;	 DB INPFUNCT
+   262 			ABSSTR:
+   263 595B			DB 'ABS',0
+            41 42 53 00 
+            
+   264 			;	 DB ABSFUNCT
+   265 			SQRTSTR:
+   266 595F			DB 'SQRT',0
+            53 51 52 54 
+            00 
+   267 			;	 DB SQRTFUNCT
+   268
+   269 			BCDUNPK:
+   270 5964			DS 8
+   271 			BCDPACK:
+   272 596C			DS 4
+   273 			BCDACC:
+   274 5970			DS 4
+   275 			FACC:
+   276 5974			DS 4
+   277 			VARSPACE:
+   278 5978			DS 26
+   279 			PROGSPACE:
+   280 5992			DS 0
+
+
+*******************************************************************************
+                                 Symbols table
+*******************************************************************************
+
+Names			Types	Values
+-----			-----	------
+NULL_INTERRUPT		EQU	00073h
+SWITCH_BANK		EQU	00074h
+SET_VIDEO_MODE		EQU	00077h
+SET_INPUT_MODE		EQU	0007Ch
+ZERO_INPUT_BUFFER	EQU	00081h
+KEYBOARD_INT		EQU	00091h
+GETKEY			EQU	000C0h
+RESET_CURSOR		EQU	000FCh
+DISPCHAR		EQU	0010Bh
+PRINT			EQU	00125h
+GETCHAR			EQU	00131h
+GETCH			EQU	0013Ch
+READ_SECTOR		EQU	00145h
+WRITE_SECTOR		EQU	001B3h
+OS_LOADER_BASE		EQU	05681h
+OS_LOADER_SIZE		EQU	00200h
+BASIC_BASE		EQU	05881h
+BASIC_SIZE		EQU	01000h
+PCB_WAIT		EQU	00001h
+PCB_ACTIVE		EQU	00002h
+PCB_IO			EQU	00003h
+PCB_TERM		EQU	00004h
+LOADENTR		Label	05681h
+PCB_P			Label	05692h
+PCBLOCK			Label	00000h
+PCB_STATE		Label	00000h
+PCB_HANDLE		Label	00001h
+PCB_ID			Label	00003h
+PCB_PSW			Label	00004h
+PCB_AF			Label	00006h
+PCB_BC			Label	00008h
+PCB_DE			Label	0000Ah
+PCB_HL			Label	0000Ch
+MSG			Label	05694h
+LOADLP			Label	056A1h
+BCDADD			Label	05881h
+ADDLOOP			Label	05888h
+BCDNEG			Label	05893h
+NEGLOOP			Label	05897h
+BCDSUB			Label	058A4h
+SUBLOOP			Label	058B8h
+BCD2STR			Label	058C1h
+STR2BCD			Label	058C1h
+CONVERT			Label	058D5h
+FINCONV			Label	058EAh
+ZEROLOOP		Label	058ECh
+STRTPACK		Label	058F6h
+PACKFN			Label	058FEh
+CONVERR			Label	05911h
+STMTJMPTB		Label	05912h
+IFSTR			Label	05912h
+THENSTR			Label	05915h
+ELSESTR			Label	0591Ah
+ENDSTR			Label	0591Fh
+GOTOSTR			Label	05923h
+GOSUBSTR		Label	05928h
+RETSTR			Label	0592Eh
+LABLESTR		Label	05932h
+RUNSTR			Label	05936h
+PAUSESTR		Label	0593Ah
+PRINTSTR		Label	05940h
+READSTR			Label	05946h
+WRITESTR		Label	0594Bh
+FNCTJMPTB		Label	05951h
+RNDSTR			Label	05951h
+INPUTSTR		Label	05955h
+ABSSTR			Label	0595Bh
+SQRTSTR			Label	0595Fh
+BCDUNPK			Label	05964h
+BCDPACK			Label	0596Ch
+BCDACC			Label	05970h
+FACC			Label	05974h
+VARSPACE		Label	05978h
+PROGSPACE		Label	05992h
+
+Statistics
+----------
+"Name"	= 0
+"EQU"	= 22
+"SET"	= 0
+Labels	= 52
+
+

@@ -12,7 +12,7 @@
 ;
 ;***********************************************************************
 
-		include "BIOS_MAP.INC"
+		INCLUDE "BIOS_MAP.INC"
 
 BASIC_BASE	EQU OS_LOADER_BASE+OS_LOADER_SIZE
 BASIC_SIZE	EQU 1000H
@@ -26,6 +26,7 @@ LOADENTR:
 	LXI  H,BASIC_BASE
 	LXI  D,0001H
 	LXI  B,0200H
+	INCLUDE "UTIL/PROC_CNTL.ASM"
 	MVI  C,8
 
 MSG:
