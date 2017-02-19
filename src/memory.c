@@ -1,5 +1,4 @@
 #include "memory.h"
-#include <windows.h>
 
 char *memBanks[4],*sharedMem;
 int  bankNumber;

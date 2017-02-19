@@ -1,4 +1,4 @@
-#include <SDL\\SDL.h>
+#include <SDL/SDL.h>
 
 #ifndef _DPC_KEYBOARD_
 # define _DPC_KEYBOARD_

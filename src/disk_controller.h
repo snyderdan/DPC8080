@@ -1,6 +1,6 @@
-#include "..\\I8080\\I8080.h"
+#include "../I8080/I8080.h"
 #include <stdio.h>
-#include <windows.h>
+#include <stdlib.h>
 
 /**
  *  This provides an interface to an external disk

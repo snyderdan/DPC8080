@@ -1,9 +1,8 @@
 #include <stdio.h>
+#include <stdint.h>
 #include <time.h>
-#include <windows.h>
-#include <WinSock2.h>
 
-#include "..\\I8080\\I8080.h"
+#include "../I8080/I8080.h"
 #include "delay.h"
 #include "drawing.h"
 #include "video.h"
@@ -20,12 +19,10 @@ int main() {
 	char  ch;
 	I8080 *cpu;
 	FILE  *boot;
-	int64_t start_time, target_time, delta_time;
+	int64_t target_time, delta_time;
 	int running, lSize, result;
 	int target_cycles, actual_cycles, cycles_per_loop;
 	SDL_Event event;
-	
-	SetThreadAffinityMask(GetCurrentThread(), 1);
 	
 	cpu  = newCPU();
 	keyboardbuffer = malloc(1024);
@@ -56,7 +53,7 @@ int main() {
 	cycles_per_loop = EXECUTION_INTERVAL * (CPU_FREQUENCY / 1000.0);
 	target_cycles   = cycles_per_loop;
 	
-	getMicroSeconds(&target_time);	// set start time of run
+	target_time = getMicroSeconds() + EXECUTION_INTERVAL;	// set start time of run
 	
 	running = 1;
 	
@@ -134,7 +131,7 @@ int main() {
 		
 		target_time = target_time + EXECUTION_INTERVAL;		// calculate the next absolute time we want to be at
 		
-		getMicroSeconds(&delta_time);						// get current absolute time
+		delta_time = getMicroSeconds();						// get current absolute time
 		
 		delta_time = target_time - delta_time;				// calculate time difference
 		

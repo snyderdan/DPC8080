@@ -1,7 +1,6 @@
 #include <stdio.h>
-#include <windows.h>
 #include "drawing.h"
-#include "..\\I8080\\I8080.h"
+#include "../I8080/I8080.h"
 
 #ifndef _DPC_VIDEO_
 # define _DPC_VIDEO_

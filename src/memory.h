@@ -1,4 +1,4 @@
-#include "..\\I8080\\I8080.h"
+#include "../I8080/I8080.h"
 #include "video.h"
 
 #ifndef _DPC_MEMORY_

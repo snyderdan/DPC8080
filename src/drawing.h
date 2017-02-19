@@ -1,4 +1,4 @@
-#include <SDL\\SDL.h>
+#include <SDL/SDL.h>
 
 Uint32 ReadPixel(SDL_Surface *surf, int x, int y);
 void PutPixel(SDL_Surface *, int, int, Uint32);
