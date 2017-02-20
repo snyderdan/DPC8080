@@ -11,5 +11,5 @@ extern char *memBanks[4],*sharedMem;
 extern int  bankNumber;
 
 void initMemory();
-int myMMU(I8080 *cpu, int ladr);
+int64_t myMMU(I8080 *cpu, int ladr);
 #endif

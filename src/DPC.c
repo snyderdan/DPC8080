@@ -4,7 +4,6 @@
 
 #include "../I8080/I8080.h"
 #include "delay.h"
-#include "drawing.h"
 #include "video.h"
 #include "ioports.h"
 #include "keyboard.h"
@@ -27,6 +26,10 @@ int main() {
 	cpu  = newCPU();
 	keyboardbuffer = malloc(1024);
 	
+	if (SDL_Init(SDL_INIT_EVERYTHING) != 0){
+        printf("SDL_Init Error: %s", SDL_GetError());
+        return 1;
+    }
 	initCPU(cpu);
 	initMemory();
 	initDisplay();
@@ -40,7 +43,7 @@ int main() {
 	setIOPort(cpu, 6, port06_disktx);
 	setIOPort(cpu, 0xA, port0A_switch_bank);
 	
-	boot   = fopen("../bios/bios.bin", "rb");
+	boot = fopen("bios/BIOS.bin", "rb");
 	fseek(boot , 0 , SEEK_END);
     lSize  = ftell(boot);
     rewind(boot);
@@ -53,7 +56,7 @@ int main() {
 	cycles_per_loop = EXECUTION_INTERVAL * (CPU_FREQUENCY / 1000.0);
 	target_cycles   = cycles_per_loop;
 	
-	target_time = getMicroSeconds() + EXECUTION_INTERVAL;	// set start time of run
+	target_time = getMicroSeconds();	// set start time of run
 	
 	running = 1;
 	
@@ -64,8 +67,8 @@ int main() {
 			switch (event.type) {
 				case SDL_KEYDOWN:
 # define key event.key.keysym
-				    if (key.unicode >= ' ' && key.unicode <= '~') {// if it's a character
-						ch = key.unicode&0x7F;
+				    if (key.sym >= ' ' && key.sym <= '~') {// if it's a character
+						ch = key.sym&0x7F;
 					} else if (key.sym == SDLK_BACKSPACE) {
 						ch = 0x08;
 					} else if (key.sym == SDLK_RETURN) {
@@ -81,8 +84,8 @@ int main() {
 					}
 				break;
 				case SDL_KEYUP:
-					if (key.unicode >= ' ' && key.unicode <= '~') {// if it's a character
-						ch = key.unicode&0x7F;
+					if (key.sym >= ' ' && key.sym <= '~') {// if it's a character
+						ch = key.sym&0x7F;
 					} else if (key.sym == SDLK_BACKSPACE) {
 						ch = 0x08;
 					} else if (key.sym == SDLK_RETURN) {
