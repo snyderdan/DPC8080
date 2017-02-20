@@ -1,6 +1,8 @@
 #include "video.h"
 #include <time.h>
 
+Display video;
+
 Uint32 ReadPixel(SDL_Surface* source, Sint16 X, Sint16 Y) {
 	return *((Uint32 *) (source->pixels + X + (Y*source->pitch)));
 }
@@ -16,7 +18,6 @@ SDL_Surface *loadSurface(char *path) {
 	
 	loaded = SDL_LoadBMP(path);
 	optimized = SDL_ConvertSurface(loaded, video.screen->format, 0);
-	free(loaded);
 	
 	dest.x = 0;
 	dest.y = 0;
@@ -27,6 +28,7 @@ SDL_Surface *loadSurface(char *path) {
         optimized->format->Rmask, optimized->format->Gmask, optimized->format->Bmask, optimized->format->Amask);
     
     SDL_BlitScaled(optimized, NULL, scaled, &dest);
+    free(loaded);
     free(optimized);
     return scaled;
 }
@@ -39,6 +41,7 @@ void initDisplay() {
 	
 	video.textOperation = APPEND_CHAR;
 	video.dirtyBuffer = 1;
+	video.cursorIndex = 0;
 	video.displayMode = HIGH_RES;
 	
 	int i; 

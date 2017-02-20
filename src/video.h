@@ -1,8 +1,9 @@
-#include <stdio.h>
-#include <SDL2/SDL.h>
-#include "../I8080/I8080.h"
 
 #ifndef _DPC_VIDEO_
+
+# include <stdio.h>
+# include <SDL2/SDL.h>
+# include "../I8080/I8080.h"
 # define _DPC_VIDEO_
 
 # define SCALE_FACTOR  2
@@ -44,7 +45,7 @@ typedef struct video_controller {
 		dirtyBuffer;
 } Display;
 
-Display video;
+extern Display video;
 
 void initDisplay();
 SDL_Surface *LinearScale(SDL_Surface *Surface, int scale_factor);
