@@ -83,7 +83,8 @@ void port06_disktx(I8080 *cpu) {
 
 void port0A_switch_bank(I8080 *cpu) {
 	if (isOutput(cpu)) {
-		bankNumber = getAccumulator(cpu) & 0b11;
+		bankNumber = getAccumulator(cpu) & 0b111;
+		if (bankNumber == 0) bankNumber = 1;
 	} else {
 		setAccumulator(cpu, bankNumber);
 	}

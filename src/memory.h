@@ -4,10 +4,9 @@
 #ifndef _DPC_MEMORY_
 # define _DPC_MEMORY_
 
-# define BANK_SIZE   0xC000
-# define SHARED_SIZE 0x10000-BANK_SIZE
+# define BANK_SIZE   0x8000
 
-extern char *memBanks[4],*sharedMem;
+extern char *memBanks[8];
 extern int  bankNumber;
 
 void initMemory();

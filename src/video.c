@@ -53,7 +53,6 @@ void initDisplay() {
 	}
 	
 	video.charMap[95] = video.charMap[0];
-	video.charBuffer[100] = 33;
 }
 
 SDL_Color map_color8to32(Uint8 color) {
