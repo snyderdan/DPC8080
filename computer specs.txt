@@ -35,3 +35,10 @@ character set. High resolution mode is the 360x224 display, displaying 4 colors 
 mode displays 180x112 pixels but allows for up to 256 colors to be displayed. Text mode is operated
 through the use of various IO ports (mainly handled by the BIOS) while pixel manipulation is done 
 directly through memory. 
+
+4) Text output
+
+The DPC display supports 64 characters. The IO port for text display accepts ASCII characters in the 
+range 0x20 to 0x60. (that is, starting at space, including all the capital letters, and ending at `).
+The IO port then translates this into the appropriate representation for the display which has a 
+predefined set of characters it displays. 

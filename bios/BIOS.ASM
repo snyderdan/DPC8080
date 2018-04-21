@@ -23,7 +23,7 @@
 ;
 ;***********************************************************************
 
-	include "HDD.inc"
+	INCLUDE	"HDD.INC"
 
 ;***********************************************************************
 ;
@@ -32,24 +32,24 @@
 ;***********************************************************************
 
 BIOS_BASE	  EQU 0000H
-BIOS_SIZE	  EQU 0400H
+BIOS_SIZE	  EQU 0500H
 
 BIOS_VAR_BASE	  EQU BIOS_BASE + BIOS_SIZE
-BIOS_VAR_SIZE	  EQU 0080H
+BIOS_VAR_SIZE	  EQU 0100H
 
 INPUT_BUFFER_BASE EQU BIOS_VAR_BASE + BIOS_VAR_SIZE
 INPUT_BUFFER_SIZE EQU 0100H
 
 SYS_STACK_SIZE	  EQU 00100H
-SYS_STACK_BASE	  EQU INPUT_BUFFER_BASE+INPUT_BUFFER_SIZE+SYS_STACK_SIZE
+SYS_STACK_BASE	  EQU INPUT_BUFFER_BASE+INPUT_BUFFER_SIZE+SYS_STACK_SIZE-1
 
-VIDEO_MEMORY_BASE EQU SYS_STACK_BASE+1
+VIDEO_MEMORY_BASE EQU SYS_STACK_BASE
 VIDEO_MEMORY_SIZE EQU 5000H
 
-OS_LOADER_BASE	  EQU VIDEO_MEMORY_BASE+VIDEO_MEMORY_SIZE
+OS_LOADER_BASE	  EQU VIDEO_MEMORY_BASE+VIDEO_MEMORY_SIZE+1
 OS_LOADER_SIZE	  EQU 0200H
 
-BIOS_EXTENSION	  EQU OS_LOADER_BASE+OS_LOADER_SIZE
+OS_BASE 		  EQU OS_LOADER_BASE+OS_LOADER_SIZE
 
 ;***********************************************************************
 ;
@@ -86,9 +86,9 @@ INTERRUPT_MODE	EQU 01H
 ;
 ;***********************************************************************
 
-DELETE_CHAR	EQU 00H
-APPEND_CHAR	EQU 01H
-NEW_LINE	EQU 02H
+DELETE_CHAR		EQU 00H
+APPEND_CHAR		EQU 01H
+NEW_LINE		EQU 02H
 RESET_SCREEN	EQU 03H
 
 HI_RES_MODE	EQU 00H
@@ -117,6 +117,21 @@ INT_FILL	MACRO
 		INT_FILL_HALF
 		INT_FILL_HALF
 		NOP
+		ENDM
+		
+INT_ENTER   MACRO
+		PUSH PSW
+		PUSH B
+		PUSH D
+		PUSH H
+		ENDM
+		
+INT_EXIT	MACRO
+		POP  H
+		POP  D
+		POP  B
+		POP  PSW
+		RET
 		ENDM
 
 
@@ -175,7 +190,7 @@ NULL_INTERRUPT:
 ;***********************************************************************
 ;
 ; FUNCTION:  SWITCH_BANK
-; PARAMS:    BANK NUMBER IN A
+; PARAMS:    BANK NUMBER IN A (1-7)
 ; RETURNS:   NONE
 ; NOTES:     SWITCHES THE MEMORY BANK. BE PREPARED.
 ; PROC TIME: 20 CYCLES
@@ -185,6 +200,22 @@ NULL_INTERRUPT:
 SWITCH_BANK:
 	OUT BANK_PORT
 	RET
+	
+
+;***********************************************************************
+;
+; FUNCTION:  GET_BANK
+; PARAMS:    NONE
+; RETURNS:   BANK NUMBER IN A (1-7)
+; NOTES:     RETURNS THE CURRENT MEMORY BANK
+; PROC TIME: 20 CYCLES
+;
+;***********************************************************************
+
+GET_BANK:
+	IN  BANK_PORT
+	RET
+
 
 ;***********************************************************************
 ;
@@ -250,10 +281,7 @@ LOOP_ZERO_BUFFER:
 ;***********************************************************************
 
 KEYBOARD_INT:
-	PUSH PSW	     ; ENTER INTERRUPT
-	PUSH B
-	PUSH D
-	PUSH H
+	INT_ENTER
 	LXI  H,INPUT_BUFFER  ; LOAD H WITH BUFFER ADDRESS
 	LDA  INPUT_MODE      ; TEST IF WE'RE IN INTERRUPT MODE
 	ORA  A
@@ -267,7 +295,7 @@ KEYBOARD_INT:
 	INR  A		     ; INCREMENT TO NEXT MEMORY LOCATION
 	STA  BUFFER_INDEX    ; STORE MEMORY LOCATION FOR NEXT CALL
 	MOV  M,B	     ; STORE CHAR
-	JMP  EXIT_INTERRUPT
+	JMP	 EXIT_INTERRUPT
 
 TOGGLE_STATE:
 	IN   KEY_INPUT_PORT  ; GET KEY PRESSED
@@ -276,22 +304,8 @@ TOGGLE_STATE:
 	MOV  A,M
 	CMA		     ; TOGGLE KEY STATE
 	MOV  M,A
-
-;***********************************************************************
-;
-; FUNCTION:  EXIT_INTERRUPT
-; PARAMS:    NONE
-; RETURNS:   NONE
-; NOTES:     RESTORES THE STATE OF ALL REGISTERS FROM ENTER_INTERRUPT
-; PROC TIME: 50 CYCLES
-;
-;***********************************************************************
 EXIT_INTERRUPT:
-	POP  H
-	POP  D
-	POP  B
-	POP  PSW
-	RET
+	INT_EXIT
 
 ;***********************************************************************
 ;
@@ -373,7 +387,7 @@ NEWLINE:
 ; FUNCTION:  RESET_CURSOR
 ; PARAMS:    NONE
 ; RETURNS:   -1 IN A IF NOT IN TEXT MODE, ELSE NONE
-; NOTES:     SETS CURSOR TO 0
+; NOTES:     SETS CURSOR TO 0 AND CLEARS SCREEN
 ; PROC TIME: 28/63 CYCLES
 ;
 ;***********************************************************************
@@ -472,7 +486,7 @@ GETCH:
 ; PARAMS:    16-BIT CHS ADDRESS IN DE AND BUFFER ADDRESS IN HL
 ; RETURNS:   0 IN A IF SUCCESSFUL, ERROR CODE OTHERWISE
 ; NOTES:     ADDRESS IS IN CHS: 	D	  |	   E
-;				 C C C C C C C H  |  H H S S S S S S
+;						 C C C C C C C H  |  H H S S S S S S
 ;	     THIS IS THE CORE READ OPERATION, WHICH SHOULD ONLY
 ;	     BE PERFORMED UNDER THE DISGRESSION OF THE OS.
 ; PROC TIME: BEST CASE: 30883 CYCLES
@@ -546,7 +560,7 @@ READ_ERR:
 ; PARAMS:    16-BIT CHS ADDRESS IN DE AND BUFFER ADDRESS IN HL
 ; RETURNS:   0 IN A IF SUCCESSFUL, ERROR CODE OTHERWISE
 ; NOTES:     ADDRESS IS IN CHS: 	D	  |	   E
-;				 C C C C C C C H  |  H H S S S S S S
+;						 C C C C C C C H  |  H H S S S S S S
 ;	     THIS IS THE CORE WRITE OPERATION, WHICH SHOULD ONLY
 ;	     BE PERFORMED UNDER THE DISGRESSION OF THE OS.
 ; PROC TIME: BEST CASE: 30883 CYCLES
@@ -665,7 +679,6 @@ LOAD_ERROR:
 	LXI  H,LOAD_ERROR_MSG
 	CALL PRINT
 	HLT
-	JMP  BIOS_EXTENSION
 
 INIT_DATA:
 	DB  0AH, 0AH, '                          DANS PC',0
