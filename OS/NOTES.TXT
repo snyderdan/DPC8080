@@ -1,7 +1,199 @@
+														   |
+GOALS FOR OS:
+ PROVIDE SOME CORE FUNCTIONALITY. THE MAIN FEATURES OF THIS 
+ BASE OS IS TO PROVIDE A LANGUAGE TO PROGRAM THE COMPUTER 
+ FURTHER. THIS LANGUAGE WILL MOST LIKELY BE INTERPRETED AND
+ 
 
 CALLING CONVENTION FOR OS:
-	PARAMETERS ARE PASSED ON THE STACK.
-	THE CALLER IS RESPONSIBLE FOR STORING REGISTERS DUE TO THE SPEED OF 
-	PUSH/POP COMPARED TO INX AND DCX OF SP, OR OTHER MEANS OF 
-	MANIPULATING SP. 8-BIT RETURN VALUES ARE RETURNED IN A, WHILE 16-BIT
-	RETURN VALUES ARE RETURNED IN HL. 
+ PARAMETERS ARE PASSED ON THE STACK.
+
+ CALLER MUST SAVE REGISTERS.
+
+ THE CALLEE CLEANS STACK. 
+
+ FUNCTIONS MAY SET FLAGS TO RELAY RESULTS.
+ 8-BIT RETURN VALUES ARE RETURNED IN A.
+ 16-BIT RETURN VALUES ARE RETURNED IN HL. 
+
+ A AND FLAGS ARE NEVER PRESERVED. 
+ HL IS NOT PRESERVED WHEN RETURNING 16-BIT VALUES.
+
+
+LANGUAGE:
+ I WILL CALL THIS LANGUAGE ... SIMPLE C
+ THIS LANGUAGE IS PRIMARILY FOR DEVELOPMENT OF BIGGER AND
+ BETTER OS FEATURES. SO IT WILL SUPPORT ONLY 3 TYPES.
+ INTEGER, BOOLEAN, AND CHAR. STRINGS WILL BE EXPRESSED AS
+ ARRAYS OF CHARACTERS. THERE ARE NO EXPLICIT ARRAY OR 
+ POINTER TYPES, BUT MEMORY CAN BE ACCESSED VIA THE [] 
+ OPERATOR. 
+
+ HERE IS THE SYNTAX:
+
+ID = [A-Z][A-Z0-9]*
+ICONST = [0-9]+
+STRCONST = '.+'
+
+PROGRAM : STMTLIST
+
+STMTLIST : STATEMENT ';' MORESTMTS
+
+STATEMENT : FUNCDEF
+          | FUNCALL
+          | ASSIGNMENT
+          | VARDECL
+          | IFSTMT
+          | WHILESTMT
+          | RETSTMT
+          | RESERVESTMT
+
+MORESTMTS : STMTLIST | E
+
+FUNCDEF : 'FUNCTION' ID ':' TYPE '(' ARGSDEF ')' BLOCKSTMT
+
+FUNCALL : 'CALL' ID '(' ARGLIST ')'
+
+ASSIGNMENT : ID '=' EXPR
+           | MEMACCESS '=' EXPR
+
+VARDECL : 'VAR' ID ':' TYPE
+
+IFSTMT : 'IF' '(' BOOLEXPR ')' BLOCKSTMT 'ELSE' BLOCKSTMT
+       | 'IF' '(' BOOLEXPR ')' BLOCKSTMT
+
+WHILESTMT : 'WHILE' '(' BOOLEXPR ')' BLOCKSTMT
+
+BLOCKSTMT : '{' STMTLIST '}'
+
+RETSTMT : 'RETURN' EXPR
+
+RESERVESTMT : 'RESERVE' ID 'AS' '[' CLIST ']'
+
+CLIST : CONSTANT
+      | CONSTANT ',' CLIST
+
+CONSTANT : ICONST
+         | STRCONST
+
+TYPE : 'INT'
+     | 'BOOL'
+     | 'CHAR'
+
+ARGSDEF : ARGDEF ',' ARGSDEF
+        | ARGDEF
+
+ARGDEF : ID ':' TYPE
+
+ARGLIST : EXPR ',' ARGLIST
+        | EXPR
+
+EXPR : NUMEXPR
+     | BOOLEXPR
+
+MEMACCESS : '[' NUMEXPR ']'
+
+NUMEXPR : NUMEXPR '+' NUMEXPR
+        | NUMEXPR '-' NUMEXPR
+        | NUMEXPR '*' NUMEXPR
+        | NUMEXPR '/' NUMEXPR
+        | NUMEXPR '^' NUMEXPR
+        | NUMEXPR '&' NUMEXPR
+        | NUMEXPR '|' NUMEXPR
+        | '(' NUMEXPR ')'
+        | '~' NUMEXPR
+        | ICONST
+        | ID
+        | MEMACCESS
+
+BOOLEXPR : BOOLEXPR 'AND' BOOLEXPR
+         | BOOLEXPR 'OR' BOOLEXPR
+         | 'NOT' BOOLEXPR
+         | EXPR '!=' EXPR
+         | EXPR '==' EXPR
+         | NUMEXPR '<' NUMEXPR
+         | NUMEXPR '<=' NUMEXPR
+         | NUMEXPR '>' NUMEXPR
+         | NUMEXPR '>=' NUMEXPR
+         | '(' BOOLEXPR ')'
+         | 'TRUE'
+         | 'FALSE'
+         | ID
+         | MEMACCESS
+
+
+FIRST(STATEMENT) = {
+	FUNCTION
+	CALL
+	VAR
+	IF 
+	WHILE
+	RET
+	RESERVE
+	ID
+}
+
+
+TOKEN MAPPING:
+1  = integer constant
+2  = string constant
+3  = char constant
+4  = id
+
+127 = int
+128 = bool
+129 = char
+130 = function
+131 = call
+132 = return
+133 = true
+134 = false
+135 = var
+136 = if
+137 = else
+138 = while
+139 = and
+140 = or
+141 = not
+142 = !=
+143 = ==
+144 = <
+145 = <=
+146 = >
+147 = >=
+148 = reserve
+149 = as
+
+
+
+The remaining symbols are:
+(, ), +, -, *, /, ^, &, |, ~, {, }, [, ], :, ;, ','
+
+These symbols remain as their normal ASCII representation.
+For constants and IDs, the token 1, 2, 3, or 4 is followed
+by a 16-bit value which is the address of the constant/ID
+descriptor. 
+
+function fib:int(target:int) {
+	var first : int;
+	var second : int;
+	var count : int;
+
+	if (target < 0) {
+		return 0;
+	}
+
+	first = 0;
+	second = 1;
+	count = 0;
+
+	while (count < target) {
+		var temp : int;
+		temp = first + second;
+		first = second;
+		second = temp;
+		count = count + 1;
+	}
+
+	return second;
+}

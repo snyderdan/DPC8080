@@ -38,7 +38,7 @@ directly through memory.
 
 4) Text output
 
-The DPC display supports 64 characters. The IO port for text display accepts ASCII characters in the 
-range 0x20 to 0x60. (that is, starting at space, including all the capital letters, and ending at `).
-The IO port then translates this into the appropriate representation for the display which has a 
-predefined set of characters it displays. 
+The DPC display supports 95 characters. The IO port for text display accepts ASCII characters in the 
+range 0x20 to 0x7E. (that is, starting at space, including all the capital letters, lowercase letters
+and ending on ~). The IO port then translates this into the appropriate representation for the 
+display which has a predefined set of characters it displays. 
